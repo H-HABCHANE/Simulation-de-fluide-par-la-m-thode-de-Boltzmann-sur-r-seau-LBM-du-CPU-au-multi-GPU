@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  cpu:
+    name: CPU build and tests (${{ matrix.real }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - real: float
+            real_double: "OFF"
+          - real: double
+            real_double: "ON"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DLBM_ENABLE_CUDA=OFF
+          -DLBM_ENABLE_MPI=OFF
+          -DLBM_REAL_DOUBLE=${{ matrix.real_double }}
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

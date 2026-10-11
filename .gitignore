@@ -1,0 +1,42 @@
+# Build trees
+build/
+build-*/
+cmake-build-*/
+
+# Binaries and objects
+*.o
+*.obj
+*.a
+*.so
+*.out
+*.exe
+
+# Simulation output (regenerated, can be large)
+output/
+*.vtk
+*.vti
+*.npy
+*.npz
+*.bin
+*.dat
+
+# Videos (only the light GIF in docs/ is versioned)
+*.mp4
+*.avi
+
+# Profiler reports
+*.ncu-rep
+*.nsys-rep
+*.qdrep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
