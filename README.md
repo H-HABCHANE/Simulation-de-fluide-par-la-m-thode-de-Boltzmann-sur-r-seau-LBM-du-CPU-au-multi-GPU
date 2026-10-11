@@ -13,7 +13,7 @@ benchmarked on the same metric (MLUPS, million lattice updates per second).
 | Version | Description | Status |
 |---|---|---|
 | v0 | Sequential CPU — correctness reference | done, validated (Poiseuille) |
-| v1 | CPU OpenMP — honest performance baseline | planned |
+| v1 | CPU OpenMP — honest performance baseline: pull scheme, SoA layout, vectorised | done, bitwise identical to v0 |
 | v2 | Naive CUDA — one thread per cell | planned |
 | v3 | Optimized CUDA — SoA layout, fused collide + stream, double buffering | planned |
 | v4 | Multi-GPU MPI + CUDA — domain decomposition, halo exchange, overlap | planned |
@@ -36,7 +36,9 @@ keeps the float resolution on the flow-dependent part of `f`; without it, the fl
 stagnates far from the steady state. Even with it, the float stagnation error (~1e-4) is as
 large as the H = 64 discretisation error, so the convergence order is only checked in double.
 
-Planned: every later version must reproduce v0 within a justified tolerance.
+Cross-version check: v1 and v1_naive (OpenMP) reproduce v0 **bit for bit** for 1, 2, 3, 4 and 8 threads
+(`tests/test_v1_vs_v0.cpp`, non-uniform case with an obstacle). Later versions must reproduce
+v0 within a justified tolerance.
 
 ## Build
 
@@ -51,6 +53,7 @@ ctest --test-dir build --output-on-failure
 | `LBM_ENABLE_CUDA` | `OFF` | Build the CUDA versions (default arch: `sm_75`, Tesla T4) |
 | `LBM_ENABLE_MPI` | `OFF` | Build the MPI + CUDA version (requires CUDA) |
 | `LBM_REAL_DOUBLE` | `OFF` | Use `double` instead of `float` |
+| `LBM_NATIVE` | `OFF` | `-march=native -ffp-contract=off` (vectorisation for the build CPU, no FMA) |
 
 ### Run and plot
 
@@ -61,6 +64,20 @@ python3 scripts/plot_fields.py output/poiseuille       # -> output/poiseuille/fi
 ```
 
 Fields are written as NumPy `.npy` files (`rho`, `ux`, `uy`, `vorticity`, `solid`) plus `meta.json`.
+
+### Benchmark
+
+```bash
+bench/measure_bandwidth.sh                                    # STREAM -> results/bandwidth_<cpu>.csv
+python3 bench/ceiling.py results/bandwidth_<cpu>.csv          # MLUPS ceiling from bandwidth
+python3 bench/run_bench.py --exe build/src/v0_cpu/lbm_v0
+python3 bench/run_bench.py --exe build/src/v1_omp/lbm_v1 --threads 1 2 4 8
+```
+
+Each run does an untimed warm-up, then several timed repetitions inside the process; the CSV
+records the CPU, frequency governor, compiler, flags, precision, thread count and git commit.
+MLUPS = nx * ny * steps / time / 1e6. The memory-bound ceiling is
+bandwidth / (2 * 9 * sizeof(real)) bytes per cell update.
 
 ### Docker
 

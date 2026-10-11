@@ -7,6 +7,7 @@ project(lbm_d2q9 LANGUAGES CXX)
 option(LBM_ENABLE_CUDA "Build the CUDA versions (v2, v3)" OFF)
 option(LBM_ENABLE_MPI "Build the multi-GPU version (v4, requires CUDA)" OFF)
 option(LBM_REAL_DOUBLE "Use double precision for 'real' (default: float)" OFF)
+option(LBM_NATIVE "Optimise for the build machine (-march=native); binaries are not portable" OFF)
 
 if(LBM_ENABLE_MPI AND NOT LBM_ENABLE_CUDA)
   message(FATAL_ERROR "LBM_ENABLE_MPI=ON requires LBM_ENABLE_CUDA=ON")
@@ -14,6 +15,14 @@ endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
+if(LBM_NATIVE)
+  # Added to the global flags so that they are recorded in build_info.hpp (benchmark CSV).
+  # -ffp-contract=off: no fused multiply-add, so the CPU versions stay bitwise identical to
+  # each other. Measured cost: none when memory-bound, about 8% on grids that fit in cache
+  # (results/v1_steps_*.csv, steps 4a and 4b).
+  string(APPEND CMAKE_CXX_FLAGS " -march=native -ffp-contract=off")
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -48,6 +57,7 @@ add_subdirectory(src/common)
 # Versions
 # ---------------------------------------------------------------------------
 add_subdirectory(src/v0_cpu)
+add_subdirectory(src/v1_omp)
 
 # ---------------------------------------------------------------------------
 # Tests

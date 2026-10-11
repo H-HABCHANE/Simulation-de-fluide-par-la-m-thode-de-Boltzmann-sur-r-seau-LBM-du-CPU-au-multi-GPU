@@ -15,9 +15,15 @@ struct Params {
   real u_max = real(0.05);  // target peak velocity, sets the driving force
   int steps = 20000;
   std::string out_dir = "output";
+
+  // Benchmark mode: no file output; `warmup` untimed steps, then `reps` timed runs of `steps`.
+  bool bench = false;
+  int warmup = 100;
+  int reps = 5;
 };
 
-// Parses "--key value" pairs (--case, --nx, --ny, --tau, --umax, --steps, --out).
+// Parses "--key value" pairs (--case, --nx, --ny, --tau, --umax, --steps, --out,
+// --warmup, --reps) and the --bench flag.
 // Throws std::invalid_argument on unknown keys or invalid values.
 Params parse_args(int argc, char** argv);
 

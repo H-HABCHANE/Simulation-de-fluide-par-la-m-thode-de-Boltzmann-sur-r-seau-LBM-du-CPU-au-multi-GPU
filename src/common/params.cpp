@@ -9,6 +9,11 @@ Params parse_args(int argc, char** argv) {
   Params p;
   for (int a = 1; a < argc; a += 2) {
     const std::string key = argv[a];
+    if (key == "--bench") {  // flag without value
+      p.bench = true;
+      --a;
+      continue;
+    }
     if (a + 1 >= argc) throw std::invalid_argument("missing value for " + key);
     const std::string val = argv[a + 1];
 
@@ -19,12 +24,15 @@ Params parse_args(int argc, char** argv) {
     else if (key == "--umax") p.u_max = static_cast<real>(std::stod(val));
     else if (key == "--steps") p.steps = std::stoi(val);
     else if (key == "--out") p.out_dir = val;
+    else if (key == "--warmup") p.warmup = std::stoi(val);
+    else if (key == "--reps") p.reps = std::stoi(val);
     else throw std::invalid_argument("unknown option " + key);
   }
 
   if (p.nx < 1 || p.ny < 3) throw std::invalid_argument("grid too small");
   if (p.tau <= real(0.5)) throw std::invalid_argument("tau must be > 0.5 (positive viscosity)");
   if (p.steps < 0) throw std::invalid_argument("steps must be >= 0");
+  if (p.warmup < 0 || p.reps < 1) throw std::invalid_argument("need warmup >= 0 and reps >= 1");
   return p;
 }
 

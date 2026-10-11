@@ -31,6 +31,10 @@ class SolverV0 {
   // Sum of rho over fluid cells, accumulated in double.
   double total_mass() const;
 
+  // Raw (shifted) populations, for cross-version comparisons.
+  const std::vector<real>& populations() const { return g_; }
+  int threads() const { return 1; }
+
   int nx() const { return nx_; }
   int ny() const { return ny_; }
   const Mask& solid() const { return solid_; }
