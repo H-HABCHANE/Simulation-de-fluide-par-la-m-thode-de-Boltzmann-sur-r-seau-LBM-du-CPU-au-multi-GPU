@@ -12,16 +12,31 @@ benchmarked on the same metric (MLUPS, million lattice updates per second).
 
 | Version | Description | Status |
 |---|---|---|
-| v0 | Sequential CPU — correctness reference | planned |
+| v0 | Sequential CPU — correctness reference | done, validated (Poiseuille) |
 | v1 | CPU OpenMP — honest performance baseline | planned |
 | v2 | Naive CUDA — one thread per cell | planned |
 | v3 | Optimized CUDA — SoA layout, fused collide + stream, double buffering | planned |
 | v4 | Multi-GPU MPI + CUDA — domain decomposition, halo exchange, overlap | planned |
 
-## Validation (planned)
+## Validation
 
-- Poiseuille flow: velocity profile compared with the analytical parabola (relative L2 error).
-- Cross-version comparison: every version must reproduce v0 within a justified tolerance.
+![Poiseuille profile](docs/poiseuille_profile.png)
+
+Plane Poiseuille flow (periodic in x, halfway bounce-back walls, Guo body force), run by
+`ctest` in both precisions (`tests/test_poiseuille.cpp`):
+
+| Check | double | float |
+|---|---|---|
+| A. `tau = 1/2 + sqrt(3)/4` (BGK + bounce-back is exact for this tau) | L2 < 1e-8 | L2 < 2e-4 |
+| B. `tau = 1`, H = 16, 32, 64 | L2 < 2e-3, observed order in [1.9, 2.1] | L2 < 2e-3 |
+| C. Mass conservation (relative drift) | < 1e-13 | < 1e-6 |
+
+Populations are stored shifted by their rest value (`f_i - w_i`). In single precision this
+keeps the float resolution on the flow-dependent part of `f`; without it, the float run
+stagnates far from the steady state. Even with it, the float stagnation error (~1e-4) is as
+large as the H = 64 discretisation error, so the convergence order is only checked in double.
+
+Planned: every later version must reproduce v0 within a justified tolerance.
 
 ## Build
 
@@ -36,6 +51,16 @@ ctest --test-dir build --output-on-failure
 | `LBM_ENABLE_CUDA` | `OFF` | Build the CUDA versions (default arch: `sm_75`, Tesla T4) |
 | `LBM_ENABLE_MPI` | `OFF` | Build the MPI + CUDA version (requires CUDA) |
 | `LBM_REAL_DOUBLE` | `OFF` | Use `double` instead of `float` |
+
+### Run and plot
+
+```bash
+./build/src/v0_cpu/lbm_v0 --nx 64 --ny 34 --tau 1.0 --steps 20000 --out output/poiseuille
+python3 scripts/plot_poiseuille.py output/poiseuille   # -> docs/poiseuille_profile.png
+python3 scripts/plot_fields.py output/poiseuille       # -> output/poiseuille/fields.png
+```
+
+Fields are written as NumPy `.npy` files (`rho`, `ux`, `uy`, `vorticity`, `solid`) plus `meta.json`.
 
 ### Docker
 

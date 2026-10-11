@@ -42,13 +42,7 @@ endif()
 # ---------------------------------------------------------------------------
 # Common code shared by all versions
 # ---------------------------------------------------------------------------
-add_library(lbm_common INTERFACE)
-target_include_directories(lbm_common INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src/common)
-if(LBM_REAL_DOUBLE)
-  target_compile_definitions(lbm_common INTERFACE LBM_REAL_DOUBLE)
-endif()
-target_compile_options(lbm_common INTERFACE
-  $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>)
+add_subdirectory(src/common)
 
 # ---------------------------------------------------------------------------
 # Versions
