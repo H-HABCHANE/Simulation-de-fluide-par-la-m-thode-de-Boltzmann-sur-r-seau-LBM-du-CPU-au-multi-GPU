@@ -68,6 +68,7 @@ triggers the vortex shedding deterministically.
 | Same, from the mean period between zero crossings | 0.1805 | `results/strouhal.csv` |
 | Periods analysed (established regime, steps 88 000 to 160 000) | 15 | `results/strouhal.csv` |
 | Same run with v3 on a Tesla T4 | St 0.1807 / 0.1805, identical amplitude | `results/strouhal.csv` |
+| Same run with v4, 2 MPI ranks on the Tesla T4 | St 0.1807 / 0.1805, identical amplitude | `results/strouhal.csv` |
 
 The reference value for an unconfined cylinder at Re = 100 is St = 0.164 (Williamson, 1996);
 the 12.5 % blockage of this periodic domain speeds up the flow around the cylinder and raises
@@ -102,7 +103,8 @@ halos are copied and exchanged (`LBM_V4_OVERLAP=0` disables it).
 - v4 is bitwise identical to v0 with 1, 2, 3 and 4 ranks (3 gives strips of unequal height),
   with and without overlap, on the periodic obstacle case and on the cylinder
   (`tests/test_v4_vs_v0.cpp`, run by CI with the CPU engine and on a Tesla T4 with the GPU
-  engine, ranks sharing the GPU).
+  engine, ranks sharing the GPU); `compute-sanitizer` (memcheck, initcheck, synccheck) is clean
+  with 2 ranks, and the cylinder run with 2 ranks gives the same Strouhal number as v1 and v3.
 - **No scaling result is published yet**: it requires one GPU per rank.
   `bench/run_scaling.py` (strong and weak scaling) records the number of distinct GPUs and
   marks runs where ranks share a device as invalid; `scripts/plot_scaling.py` refuses to plot
