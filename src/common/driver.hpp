@@ -12,6 +12,8 @@
 //                                   otherwise the host clock is used around run().
 //   std::string bench_info() const -> extra JSON fields for the benchmark line (GPU, ...).
 //   void set_inflow_outflow(real u_in), void populations_at(x, y, out) -> cylinder case.
+//   bool is_root() const          -> MPI solvers: only the root rank prints and writes files
+//                                    (all ranks run the driver and its collective calls).
 //
 // Cases: --case poiseuille (periodic channel driven by a body force) and --case cylinder
 // (flow past a cylinder: inlet velocity --umax, Reynolds number --re, diameter --diameter;
@@ -66,6 +68,18 @@ struct has_open_boundaries<
     : std::true_type {};
 
 template <class S, class = void>
+struct has_is_root : std::false_type {};
+template <class S>
+struct has_is_root<S, std::void_t<decltype(std::declval<const S&>().is_root())>>
+    : std::true_type {};
+
+template <class Solver>
+bool is_root(const Solver& s) {
+  if constexpr (has_is_root<Solver>::value) return s.is_root();
+  else return true;
+}
+
+template <class S, class = void>
 struct has_bench_info : std::false_type {};
 template <class S>
 struct has_bench_info<S, std::void_t<decltype(std::declval<const S&>().bench_info())>>
@@ -106,6 +120,7 @@ void run_bench(Solver& solver, const Params& p, const char* version) {
     const double mlups = static_cast<double>(p.nx) * p.ny * p.steps / t / 1e6;
     std::string extra;
     if constexpr (has_bench_info<Solver>::value) extra = ", " + solver.bench_info();
+    if (!is_root(solver)) continue;
     std::printf(
         "BENCH {\"version\": \"%s\", \"rep\": %d, \"nx\": %d, \"ny\": %d, \"steps\": %d, "
         "\"warmup\": %d, \"threads\": %d, \"time_s\": %.6f, \"mlups\": %.4f, \"real\": \"%s\", "
@@ -123,11 +138,12 @@ void run_and_write(Solver& solver, const Params& p, const char* version, real fo
 
   // Indicative only: use --bench (warm-up and repetitions) for measurements.
   const double mlups = static_cast<double>(p.nx) * p.ny * p.steps / seconds / 1e6;
-  std::printf("time=%.3f s  MLUPS=%.2f (indicative)  mass drift=%.3e\n", seconds, mlups,
-              (solver.total_mass() - mass0) / mass0);
-
+  const double mass1 = solver.total_mass();
   std::vector<real> rho, ux, uy;
   solver.macroscopic(rho, ux, uy);
+  if (!is_root(solver)) return;
+  std::printf("time=%.3f s  MLUPS=%.2f (indicative)  mass drift=%.3e\n", seconds, mlups,
+              (mass1 - mass0) / mass0);
   const std::vector<real> vort = vorticity(ux, uy, solver.solid(), p.nx, p.ny);
 
   std::filesystem::create_directories(p.out_dir);
@@ -170,10 +186,14 @@ inline CylinderSetup cylinder_setup(const Params& p) {
 template <class Solver>
 void run_cylinder(Solver& solver, const Params& p, const char* version, const CylinderSetup& cs) {
   using d2q9::Q;
-  std::filesystem::create_directories(p.out_dir + "/frames");
+  const bool root = is_root(solver);
   const std::string dir = p.out_dir + "/";
-  std::ofstream probe(dir + "probe.csv");
-  probe << "step,ux,uy,rho\n";
+  std::ofstream probe;
+  if (root) {
+    std::filesystem::create_directories(p.out_dir + "/frames");
+    probe.open(dir + "probe.csv");
+    probe << "step,ux,uy,rho\n";
+  }
 
   double seconds = 0.0;
   int n = 0, frames = 0;
@@ -191,8 +211,9 @@ void run_cylinder(Solver& solver, const Params& p, const char* version, const Cy
       my += d2q9::cy[i] * f[i];
     }
     const real rho = real(1) + m0;
-    probe << n << ',' << static_cast<double>(mx / rho) << ',' << static_cast<double>(my / rho)
-          << ',' << static_cast<double>(rho) << '\n';
+    if (root)
+      probe << n << ',' << static_cast<double>(mx / rho) << ',' << static_cast<double>(my / rho)
+            << ',' << static_cast<double>(rho) << '\n';
     if (!std::isfinite(static_cast<double>(rho)))
       throw std::runtime_error("the simulation diverged (non-finite density at the probe)");
 
@@ -201,16 +222,17 @@ void run_cylinder(Solver& solver, const Params& p, const char* version, const Cy
       solver.macroscopic(r, ux, uy);
       char name[64];
       std::snprintf(name, sizeof name, "frames/vort_%07d.npy", n);
-      write_npy(dir + name, vorticity(ux, uy, solver.solid(), p.nx, p.ny, false), p.ny, p.nx);
+      if (root)
+        write_npy(dir + name, vorticity(ux, uy, solver.solid(), p.nx, p.ny, false), p.ny, p.nx);
       ++frames;
     }
   }
   const double mlups = static_cast<double>(p.nx) * p.ny * p.steps / seconds / 1e6;
-  std::printf("time=%.3f s  MLUPS=%.2f (indicative, without I/O)  frames=%d\n", seconds, mlups,
-              frames);
-
   std::vector<real> rho, ux, uy;
   solver.macroscopic(rho, ux, uy);
+  if (!root) return;
+  std::printf("time=%.3f s  MLUPS=%.2f (indicative, without I/O)  frames=%d\n", seconds, mlups,
+              frames);
   write_npy(dir + "rho.npy", rho, p.ny, p.nx);
   write_npy(dir + "ux.npy", ux, p.ny, p.nx);
   write_npy(dir + "uy.npy", uy, p.ny, p.nx);
@@ -237,13 +259,14 @@ int run_driver(int argc, char** argv, const char* version) {
     if (p.case_name == "cylinder") {
       if constexpr (detail::has_open_boundaries<Solver>::value) {
         const detail::CylinderSetup cs = detail::cylinder_setup(p);
-        std::printf("case=cylinder nx=%d ny=%d D=%d Re=%g u_in=%g -> tau=%.4f, Ma=%.3f, "
+        Solver solver(p.nx, p.ny, cs.tau, real(0), real(0),
+                      make_cylinder(p.nx, p.ny, cs.xc, cs.yc, p.diameter));
+        if (detail::is_root(solver))
+          std::printf("case=cylinder nx=%d ny=%d D=%d Re=%g u_in=%g -> tau=%.4f, Ma=%.3f, "
                     "steps=%d real=%s out=%s\n",
                     p.nx, p.ny, p.diameter, p.re, static_cast<double>(p.u_max),
                     static_cast<double>(cs.tau), std::sqrt(3.0) * static_cast<double>(p.u_max),
                     p.steps, real_name, p.out_dir.c_str());
-        Solver solver(p.nx, p.ny, cs.tau, real(0), real(0),
-                      make_cylinder(p.nx, p.ny, cs.xc, cs.yc, p.diameter));
         solver.set_inflow_outflow(p.u_max);
         solver.init_equilibrium(real(1), p.u_max, real(0));
         detail::run_cylinder(solver, p, version, cs);
@@ -259,11 +282,10 @@ int run_driver(int argc, char** argv, const char* version) {
                    p.case_name.c_str());
       return 1;
     }
-    if (!p.bench) print_params(p);
-
     const int H = p.ny - 2;
     const real force = poiseuille_force(H, p.tau, p.u_max);
     Solver solver(p.nx, p.ny, p.tau, force, real(0), make_channel(p.nx, p.ny));
+    if (!p.bench && detail::is_root(solver)) print_params(p);
     solver.init_equilibrium(real(1), real(0), real(0));
 
     if (p.bench)

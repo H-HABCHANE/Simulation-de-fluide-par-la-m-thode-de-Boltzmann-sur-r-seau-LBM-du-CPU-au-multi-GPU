@@ -5,13 +5,11 @@ project(lbm_d2q9 LANGUAGES CXX)
 # Build options
 # ---------------------------------------------------------------------------
 option(LBM_ENABLE_CUDA "Build the CUDA versions (v2, v3)" OFF)
-option(LBM_ENABLE_MPI "Build the multi-GPU version (v4, requires CUDA)" OFF)
+option(LBM_ENABLE_MPI "Build the MPI version v4 (GPU engine with CUDA, CPU engine without)" OFF)
+set(LBM_MPIEXEC_FLAGS "" CACHE STRING "Extra mpiexec flags for the MPI tests, e.g. --oversubscribe")
 option(LBM_REAL_DOUBLE "Use double precision for 'real' (default: float)" OFF)
 option(LBM_NATIVE "Optimise for the build machine (-march=native); binaries are not portable" OFF)
 
-if(LBM_ENABLE_MPI AND NOT LBM_ENABLE_CUDA)
-  message(FATAL_ERROR "LBM_ENABLE_MPI=ON requires LBM_ENABLE_CUDA=ON")
-endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -65,6 +63,9 @@ if(LBM_ENABLE_CUDA)
   # GPU memory bandwidth (STREAM Copy equivalent), for the GPU ceiling.
   add_executable(gpu_bandwidth bench/gpu_bandwidth.cu)
   target_include_directories(gpu_bandwidth PRIVATE src/common)
+endif()
+if(LBM_ENABLE_MPI)
+  add_subdirectory(src/v4_mpi_cuda)
 endif()
 
 # ---------------------------------------------------------------------------

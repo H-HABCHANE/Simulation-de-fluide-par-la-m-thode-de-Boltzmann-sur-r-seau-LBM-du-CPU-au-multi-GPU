@@ -33,6 +33,39 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  mpi:
+    name: MPI build and tests, CPU engine (${{ matrix.real }})
+    # v4 with its CPU engine: the domain decomposition and the halo exchange are tested with
+    # 1 to 4 MPI ranks against v0 (bit for bit) on every push, without a GPU.
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - real: float
+            real_double: "OFF"
+          - real: double
+            real_double: "ON"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Open MPI
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends openmpi-bin libopenmpi-dev
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DLBM_ENABLE_MPI=ON
+          -DLBM_REAL_DOUBLE=${{ matrix.real_double }}
+          "-DLBM_MPIEXEC_FLAGS=--oversubscribe"
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -R v4_
+
   cuda:
     name: CUDA build, compile only (${{ matrix.real }})
     # GitHub runners have no GPU: this job only checks that the CUDA code compiles with the
@@ -49,7 +82,7 @@ jobs:
             real_double: "ON"
     steps:
       - name: Install build tools
-        run: apt-get update && apt-get install -y --no-install-recommends cmake make g++ git
+        run: apt-get update && apt-get install -y --no-install-recommends cmake make g++ git libopenmpi-dev openmpi-bin
 
       - uses: actions/checkout@v4
 
@@ -58,6 +91,7 @@ jobs:
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=Release
           -DLBM_ENABLE_CUDA=ON
+          -DLBM_ENABLE_MPI=ON
           -DCMAKE_CUDA_ARCHITECTURES=75
           -DLBM_REAL_DOUBLE=${{ matrix.real_double }}
 

@@ -14,7 +14,7 @@ benchmarked on the same metric (MLUPS, million lattice updates per second).
 *Vorticity behind a cylinder at Re = 100 (blue: clockwise, red: counter-clockwise),
 computed with this solver; 4 shedding periods.*
 
-> **Status: work in progress** (v4 multi-GPU and final write-up to come).
+> **Status: work in progress** (multi-GPU scaling measurements and final write-up to come).
 > Every number below comes from a `results/*.csv` file produced by the benchmark scripts,
 > which also record the hardware, driver, compiler, flags, grid size, step count and commit.
 
@@ -26,7 +26,7 @@ computed with this solver; 4 shedding periods.*
 | v1 | CPU OpenMP — honest performance baseline: pull scheme, SoA layout, vectorised | done, bitwise identical to v0 |
 | v2 | Naive CUDA — one thread per cell, same layout as v0 | done, bitwise identical to v0 on a Tesla T4 |
 | v3 | Optimized CUDA — SoA layout, pull streaming, no modulo; variants kept for measurement | done, bitwise identical to v0 on a Tesla T4 |
-| v4 | Multi-GPU MPI + CUDA — domain decomposition, halo exchange, overlap | planned |
+| v4 | Multi-GPU MPI + CUDA — strips of rows, halo exchange, overlap | done, bitwise identical to v0 with 1 to 4 ranks; scaling not yet measured (single GPU) |
 
 ## Validation
 
@@ -86,6 +86,34 @@ identical to v0 on this case too (`tests/test_cylinder_v1.cpp`, `tests/test_cyli
 latter run on the Tesla T4 with `compute-sanitizer` clean): the CPU run (v1) and the GPU run
 (v3) give the same probe statistics to the last printed digit.
 
+## Multi-GPU version (v4)
+
+One MPI rank per GPU; the domain is split into strips of rows (rows are contiguous in memory,
+so a halo row is one contiguous block per population, and the inlet/outlet columns stay
+local to every rank). Each rank stores its rows plus one ghost row above and below. After
+each step only the 3 populations that cross a strip boundary are exchanged: those going up
+(`i = 2, 5, 6`) to the rank above, those going down (`i = 4, 7, 8`) to the rank below, i.e.
+3 x nx values per message. Halos go through page-locked host buffers. Overlap: the two
+boundary rows are computed first, then the interior rows run in a second CUDA stream while the
+halos are copied and exchanged (`LBM_V4_OVERLAP=0` disables it).
+
+- The same cell update (`src/v4_mpi_cuda/strip_update.hpp`) is compiled for a GPU engine and
+  for a CPU engine; the CPU engine runs the MPI logic without a GPU, in CI.
+- v4 is bitwise identical to v0 with 1, 2, 3 and 4 ranks (3 gives strips of unequal height),
+  with and without overlap, on the periodic obstacle case and on the cylinder
+  (`tests/test_v4_vs_v0.cpp`, run by CI with the CPU engine and on a Tesla T4 with the GPU
+  engine, ranks sharing the GPU).
+- **No scaling result is published yet**: it requires one GPU per rank.
+  `bench/run_scaling.py` (strong and weak scaling) records the number of distinct GPUs and
+  marks runs where ranks share a device as invalid; `scripts/plot_scaling.py` refuses to plot
+  them.
+
+```bash
+cmake -S . -B build -DLBM_ENABLE_CUDA=ON -DLBM_ENABLE_MPI=ON && cmake --build build -j
+mpirun -np 4 build/src/v4_mpi_cuda/lbm_v4 --case cylinder --nx 1000 --ny 320 --diameter 40 --steps 160000
+python3 bench/run_scaling.py --exe build/src/v4_mpi_cuda/lbm_v4 --mode strong --np 1 2 4 8
+```
+
 ## Performance
 
 ![MLUPS vs memory-bandwidth ceiling](docs/mlups_vs_ceiling.png)
@@ -137,7 +165,8 @@ ctest --test-dir build --output-on-failure
 | CMake option | Default | Effect |
 |---|---|---|
 | `LBM_ENABLE_CUDA` | `OFF` | Build the CUDA versions (default arch: `sm_75`, Tesla T4) |
-| `LBM_ENABLE_MPI` | `OFF` | Build the MPI + CUDA version (requires CUDA) |
+| `LBM_ENABLE_MPI` | `OFF` | Build v4 (MPI): GPU engine with CUDA, CPU engine without |
+| `LBM_MPIEXEC_FLAGS` | empty | Extra `mpiexec` flags for the MPI tests, e.g. `--oversubscribe` |
 | `LBM_REAL_DOUBLE` | `OFF` | Use `double` instead of `float` |
 | `LBM_NATIVE` | `OFF` | `-march=native -ffp-contract=off` (vectorisation for the build CPU, no FMA) |
 | `LBM_CUDA_FMAD` | `OFF` | Allow FMA contraction in CUDA kernels (speed measurement only; breaks bitwise equality with v0) |

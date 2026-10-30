@@ -40,3 +40,14 @@ if(TARGET lbm_v3_lib)
   target_link_libraries(test_cylinder_v3 PRIVATE lbm_v0_lib lbm_v3_lib)
   add_test(NAME cylinder_v3_matches_v0 COMMAND test_cylinder_v3)
 endif()
+
+# MPI tests: v4 against v0 with 1 to 4 ranks (3 gives strips of unequal height).
+if(TARGET lbm_v4_lib)
+  add_executable(test_v4_vs_v0 test_v4_vs_v0.cpp)
+  target_link_libraries(test_v4_vs_v0 PRIVATE lbm_v0_lib lbm_v4_lib)
+  foreach(np 1 2 3 4)
+    add_test(NAME v4_matches_v0_np${np}
+             COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np} ${LBM_MPIEXEC_FLAGS}
+                     ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_v4_vs_v0> ${MPIEXEC_POSTFLAGS})
+  endforeach()
+endif()
