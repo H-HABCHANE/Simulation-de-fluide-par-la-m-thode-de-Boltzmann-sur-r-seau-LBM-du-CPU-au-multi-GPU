@@ -1,0 +1,56 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Flow past a cylinder at Re = 100, same domain as the LBM cylinder case.
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      createPatchDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// gmshToFoam creates plain patches named after the gmsh physical groups. This turns them into
+// the final boundary types; for the cyclic pair it also orders the faces so that face i of
+// "top" matches face i of "bottom" (translation by the domain height).
+pointSync false;
+
+patches
+{
+    frontAndBack
+    {
+        patchInfo { type empty; }
+        constructFrom patches;
+        patches (frontAndBack_raw);
+    }
+    cylinder
+    {
+        patchInfo { type wall; }
+        constructFrom patches;
+        patches (cylinder_raw);
+    }
+    top
+    {
+        patchInfo
+        {
+            type            cyclic;
+            neighbourPatch  bottom;
+            transformType   translational;
+            separation      (0 8 0);
+        }
+        constructFrom patches;
+        patches (top_raw);
+    }
+    bottom
+    {
+        patchInfo
+        {
+            type            cyclic;
+            neighbourPatch  top;
+            transformType   translational;
+            separation      (0 -8 0);
+        }
+        constructFrom patches;
+        patches (bottom_raw);
+    }
+}

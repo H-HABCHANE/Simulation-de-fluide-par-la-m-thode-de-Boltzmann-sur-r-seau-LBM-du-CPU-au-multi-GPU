@@ -1,0 +1,13 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Flow past a cylinder at Re = 100, same domain as the LBM cylinder case.
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    location    "constant";
+    object      momentumTransport;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+simulationType  laminar;

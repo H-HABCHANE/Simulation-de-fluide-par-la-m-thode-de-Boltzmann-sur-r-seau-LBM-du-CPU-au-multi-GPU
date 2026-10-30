@@ -1,0 +1,3 @@
+#!/bin/sh
+cd "${0%/*}" || exit 1
+rm -rf processor* postProcessing output constant/polyMesh cylinder.msh log.* [1-9]*

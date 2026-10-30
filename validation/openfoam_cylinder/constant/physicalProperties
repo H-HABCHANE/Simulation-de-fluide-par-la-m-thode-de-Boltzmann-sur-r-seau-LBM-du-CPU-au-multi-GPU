@@ -1,0 +1,16 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Flow past a cylinder at Re = 100, same domain as the LBM cylinder case.
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    location    "constant";
+    object      physicalProperties;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// Units of the diameter and the inlet velocity: D = 1, U = 1, so Re = U D / nu = 100.
+viscosityModel  constant;
+
+nu              0.01 [m^2/s];

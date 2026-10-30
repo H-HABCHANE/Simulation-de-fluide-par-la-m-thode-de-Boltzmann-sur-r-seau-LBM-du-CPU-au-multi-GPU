@@ -1,0 +1,16 @@
+#!/bin/sh
+# Flow past a cylinder at Re = 100 with OpenFOAM, on the domain of the LBM cylinder case, and
+# Strouhal number computed with the same script as the LBM runs (results/strouhal.csv).
+# Requires the OpenFOAM environment (OpenFOAM-14, openfoam.org) and gmsh.
+cd "${0%/*}" || exit 1
+. "$WM_PROJECT_DIR/bin/tools/RunFunctions"
+
+gmsh -3 cylinder.geo -format msh2 -o cylinder.msh > log.gmsh 2>&1 || exit 1
+runApplication gmshToFoam cylinder.msh
+runApplication createPatch -overwrite
+runApplication checkMesh
+runApplication decomposePar
+runParallel foamRun
+
+python3 probe_to_csv.py . output
+python3 ../../scripts/strouhal.py output --from 0.55 --label openfoam

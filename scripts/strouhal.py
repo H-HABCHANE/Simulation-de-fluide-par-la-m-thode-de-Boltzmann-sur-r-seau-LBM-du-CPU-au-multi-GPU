@@ -13,6 +13,9 @@ is periodic in y with a blockage D/H = 12.5 %, which speeds up the flow around t
 raises St slightly, so the check accepts 0.15 <= St <= 0.19 (a plausibility check, not a fine
 validation). The row is appended to results/strouhal.csv.
 
+The 'step' column may also be a time (OpenFOAM reference, validation/openfoam_cylinder): the
+analysis only needs a constant sampling interval and D / U in the same units.
+
 Usage: strouhal.py OUTPUT_DIR [--from 0.5] [--label v1]
 """
 import argparse
@@ -77,15 +80,17 @@ def main():
     st_fft, st_zero = f_fft * D / U, f_zero * D / U
     ok = ST_MIN <= st_fft <= ST_MAX and abs(st_fft - st_zero) <= 0.01
     print(f"{meta['version']}: St (FFT) = {st_fft:.4f}, St (zero crossings) = {st_zero:.4f} "
-          f"over {len(periods)} periods; shedding period = {1 / f_fft:.0f} steps; "
+          f"over {len(periods)} periods; shedding period = {1 / f_fft:.4g} (in the unit of the step column); "
           f"u_y amplitude = {np.abs(uy).max():.4f}")
     print(f"[{'PASS' if ok else 'FAIL'}] {ST_MIN} <= St <= {ST_MAX} and both methods agree "
           f"within 0.01")
 
     row = {
         "run": args.label or meta["version"], "version": meta["version"], "real": meta["real"],
-        "nx": meta["nx"], "ny": meta["ny"], "diameter": D, "u_in": U, "re": meta["re"],
-        "tau": f"{meta['tau']:.5f}", "steps": meta["steps"],
+        # nx, ny and tau only exist for the LBM runs (empty for the OpenFOAM reference).
+        "nx": meta.get("nx", ""), "ny": meta.get("ny", ""), "diameter": D, "u_in": U,
+        "re": meta["re"], "tau": f"{meta['tau']:.5f}" if "tau" in meta else "",
+        "steps": meta["steps"],
         "window_start": int(args.start * meta["steps"]),
         "st_fft": f"{st_fft:.4f}", "st_zero_crossing": f"{st_zero:.4f}",
         "periods": len(periods), "uy_amplitude": f"{np.abs(uy).max():.5f}",

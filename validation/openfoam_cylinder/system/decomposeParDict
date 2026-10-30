@@ -1,0 +1,20 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Flow past a cylinder at Re = 100, same domain as the LBM cylinder case.
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      decomposeParDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+numberOfSubdomains  4;
+
+method          simple;
+
+simpleCoeffs
+{
+    n               (4 1 1);
+}

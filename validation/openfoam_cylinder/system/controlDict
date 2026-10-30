@@ -1,0 +1,46 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Flow past a cylinder at Re = 100, same domain as the LBM cylinder case.
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      controlDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+solver          incompressibleFluid;
+
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         200;  // = 160 000 LBM steps x U/D (0.05 / 40): same physical duration
+
+// Fixed time step, so that the probe is sampled at a constant rate for the FFT of the Strouhal
+// number. Courant number: mean 0.1, maximum about 0.9 on the smallest cells near the cylinder
+// (implicit scheme); about 1100 steps per shedding period.
+deltaT          0.005;
+
+writeControl    runTime;
+writeInterval   50;
+purgeWrite      2;
+writeFormat     binary;
+writePrecision  8;
+timeFormat      general;
+timePrecision   6;
+runTimeModifiable false;
+
+functions
+{
+    // Same probe as the LBM case: 3 D behind the cylinder centre, on its axis.
+    probes
+    {
+        type            probes;
+        libs            ("libsampling.so");
+        writeControl    timeStep;
+        writeInterval   10;
+        fields          (U);
+        probeLocations  ((8 4.025 0.05));
+    }
+}
