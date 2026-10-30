@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Memory-bandwidth ceiling in MLUPS for the D2Q9 LBM, from a STREAM CSV.
+"""Memory-bandwidth ceiling in MLUPS for the D2Q9 LBM, from a bandwidth CSV.
+
+Accepts the CPU file of measure_bandwidth.sh (STREAM) or the GPU file of gpu_bandwidth
+(copy kernel); both have a copy_MBps column.
 
 Each cell update reads 9 populations and writes 9: 2 * 9 * sizeof(real) bytes.
 
@@ -9,7 +12,11 @@ Each cell update reads 9 populations and writes 9: 2 * 9 * sizeof(real) bytes.
 - Hardware ceiling (optional, --peak-gbs from the memory spec): the DRAM peak must also
   carry the write-allocate traffic, so 3 * 9 * sizeof(real) bytes per cell are used.
 
-Usage: ceiling.py results/bandwidth_<machine>.csv [--peak-gbs 42.7]
+On the GPU, a write that covers a whole 32-byte sector (coalesced writes) is not read from
+memory first; --gpu makes the hardware ceiling use 2 * 9 * sizeof(real) bytes. The measured
+ceiling (copy kernel) is the reference in both cases.
+
+Usage: ceiling.py results/bandwidth_<machine>.csv [--peak-gbs 42.7] [--gpu]
 """
 import argparse
 import csv
@@ -24,6 +31,8 @@ def main():
     ap.add_argument("bandwidth_csv")
     ap.add_argument("--peak-gbs", type=float, default=None,
                     help="theoretical DRAM bandwidth in GB/s (channels * 8 B * MT/s)")
+    ap.add_argument("--gpu", action="store_true",
+                    help="GPU: no write-allocate read in the hardware ceiling (coalesced writes)")
     args = ap.parse_args()
 
     with open(args.bandwidth_csv) as f:
@@ -31,11 +40,14 @@ def main():
     best = max(rows, key=lambda r: float(r["copy_MBps"]))
     copy_bps = float(best["copy_MBps"]) * 1e6
 
-    print(f"STREAM best Copy: {copy_bps / 1e9:.2f} GB/s ({best['threads']} threads)")
+    where = f"{best['threads']} threads" if "threads" in best else best.get("gpu", "GPU")
+    print(f"Measured best copy: {copy_bps / 1e9:.2f} GB/s ({where})")
+    peak_factor = 2 if args.gpu else 3
     for name, size in SIZES.items():
-        line = f"  {name:6s}: STREAM ceiling = {copy_bps / (2 * Q * size) / 1e6:7.1f} MLUPS"
+        line = f"  {name:6s}: measured ceiling = {copy_bps / (2 * Q * size) / 1e6:7.1f} MLUPS"
         if args.peak_gbs:
-            line += f"   hardware ceiling = {args.peak_gbs * 1e9 / (3 * Q * size) / 1e6:7.1f} MLUPS"
+            hw = args.peak_gbs * 1e9 / (peak_factor * Q * size) / 1e6
+            line += f"   hardware ceiling = {hw:7.1f} MLUPS"
         print(line)
 
 

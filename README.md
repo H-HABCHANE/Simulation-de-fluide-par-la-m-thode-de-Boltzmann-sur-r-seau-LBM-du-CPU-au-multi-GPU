@@ -19,7 +19,7 @@ benchmarked on the same metric (MLUPS, million lattice updates per second).
 |---|---|---|
 | v0 | Sequential CPU — correctness reference | done, validated (Poiseuille) |
 | v1 | CPU OpenMP — honest performance baseline: pull scheme, SoA layout, vectorised | done, bitwise identical to v0 |
-| v2 | Naive CUDA — one thread per cell | planned |
+| v2 | Naive CUDA — one thread per cell, same layout as v0 | implemented, compiles; GPU validation pending |
 | v3 | Optimized CUDA — SoA layout, fused collide + stream, double buffering | planned |
 | v4 | Multi-GPU MPI + CUDA — domain decomposition, halo exchange, overlap | planned |
 
@@ -59,6 +59,7 @@ ctest --test-dir build --output-on-failure
 | `LBM_ENABLE_MPI` | `OFF` | Build the MPI + CUDA version (requires CUDA) |
 | `LBM_REAL_DOUBLE` | `OFF` | Use `double` instead of `float` |
 | `LBM_NATIVE` | `OFF` | `-march=native -ffp-contract=off` (vectorisation for the build CPU, no FMA) |
+| `LBM_CUDA_FMAD` | `OFF` | Allow FMA contraction in CUDA kernels (speed measurement only; breaks bitwise equality with v0) |
 
 ### Run and plot
 
@@ -83,6 +84,13 @@ Each run does an untimed warm-up, then several timed repetitions inside the proc
 records the CPU, frequency governor, compiler, flags, precision, thread count and git commit.
 MLUPS = nx * ny * steps / time / 1e6. The memory-bound ceiling is
 bandwidth / (2 * 9 * sizeof(real)) bytes per cell update.
+
+### GPU on Google Colab
+
+[`notebooks/run_colab.ipynb`](notebooks/run_colab.ipynb) builds the CUDA versions for a Tesla T4
+(`sm_75`), runs all tests and `compute-sanitizer`, measures the GPU bandwidth
+(`bench/gpu_bandwidth.cu`) and benchmarks the solver. Open it in Colab with a T4 runtime and
+run all cells; the CSV files land in `results/`.
 
 ### Docker
 

@@ -7,6 +7,10 @@
 //   void init_equilibrium(rho, ux, uy);  void run(int steps);
 //   void macroscopic(rho, ux, uy) const;  double total_mass() const;
 //   const Mask& solid() const;  int threads() const;
+// Optional (detected at compile time):
+//   double timed_run(int steps)  -> elapsed seconds measured by the solver (CUDA events);
+//                                   otherwise the host clock is used around run().
+//   std::string bench_info() const -> extra JSON fields for the benchmark line (GPU, ...).
 //
 // Normal mode writes the fields to --out. Benchmark mode (--bench) writes nothing and
 // prints one JSON line per timed repetition, prefixed by "BENCH ", for bench/run_bench.py.
@@ -17,6 +21,8 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "build_info.hpp"
@@ -37,6 +43,40 @@ inline double seconds_since(std::chrono::steady_clock::time_point t0) {
   return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 }
 
+template <class S, class = void>
+struct has_timed_run : std::false_type {};
+template <class S>
+struct has_timed_run<S, std::void_t<decltype(std::declval<S&>().timed_run(1))>>
+    : std::true_type {};
+
+template <class S, class = void>
+struct has_bench_info : std::false_type {};
+template <class S>
+struct has_bench_info<S, std::void_t<decltype(std::declval<const S&>().bench_info())>>
+    : std::true_type {};
+
+// Elapsed seconds for `steps` steps: GPU solvers time themselves with CUDA events, because a
+// kernel launch returns before the kernel has run.
+template <class Solver>
+double timed(Solver& solver, int steps) {
+  if constexpr (has_timed_run<Solver>::value) {
+    return solver.timed_run(steps);
+  } else {
+    const auto t0 = std::chrono::steady_clock::now();
+    solver.run(steps);
+    return seconds_since(t0);
+  }
+}
+
+inline std::string compiler() {
+#ifdef __CUDACC__
+  return std::string(LBM_COMPILER) + " + nvcc " + std::to_string(__CUDACC_VER_MAJOR__) + "." +
+         std::to_string(__CUDACC_VER_MINOR__) + "." + std::to_string(__CUDACC_VER_BUILD__);
+#else
+  return LBM_COMPILER;
+#endif
+}
+
 inline std::string flags() {
   const std::string extra = LBM_EXTRA_FLAGS;
   return extra.empty() ? std::string(LBM_CXX_FLAGS) : std::string(LBM_CXX_FLAGS) + " " + extra;
@@ -46,16 +86,16 @@ template <class Solver>
 void run_bench(Solver& solver, const Params& p, const char* version) {
   solver.run(p.warmup);
   for (int r = 0; r < p.reps; ++r) {
-    const auto t0 = std::chrono::steady_clock::now();
-    solver.run(p.steps);
-    const double t = seconds_since(t0);
+    const double t = timed(solver, p.steps);
     const double mlups = static_cast<double>(p.nx) * p.ny * p.steps / t / 1e6;
+    std::string extra;
+    if constexpr (has_bench_info<Solver>::value) extra = ", " + solver.bench_info();
     std::printf(
         "BENCH {\"version\": \"%s\", \"rep\": %d, \"nx\": %d, \"ny\": %d, \"steps\": %d, "
         "\"warmup\": %d, \"threads\": %d, \"time_s\": %.6f, \"mlups\": %.4f, \"real\": \"%s\", "
-        "\"compiler\": \"%s\", \"flags\": \"%s\", \"build_type\": \"%s\"}\n",
+        "\"compiler\": \"%s\", \"flags\": \"%s\", \"build_type\": \"%s\"%s}\n",
         version, r, p.nx, p.ny, p.steps, p.warmup, solver.threads(), t, mlups, real_name,
-        LBM_COMPILER, flags().c_str(), LBM_BUILD_TYPE);
+        compiler().c_str(), flags().c_str(), LBM_BUILD_TYPE, extra.c_str());
     std::fflush(stdout);
   }
 }
@@ -63,9 +103,7 @@ void run_bench(Solver& solver, const Params& p, const char* version) {
 template <class Solver>
 void run_and_write(Solver& solver, const Params& p, const char* version, real force) {
   const double mass0 = solver.total_mass();
-  const auto t0 = std::chrono::steady_clock::now();
-  solver.run(p.steps);
-  const double seconds = seconds_since(t0);
+  const double seconds = timed(solver, p.steps);
 
   // Indicative only: use --bench (warm-up and repetitions) for measurements.
   const double mlups = static_cast<double>(p.nx) * p.ny * p.steps / seconds / 1e6;
