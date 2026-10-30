@@ -67,6 +67,7 @@ triggers the vortex shedding deterministically.
 | Strouhal number St = f D / U (FFT of the probe signal) | 0.1807 | `results/strouhal.csv` |
 | Same, from the mean period between zero crossings | 0.1805 | `results/strouhal.csv` |
 | Periods analysed (established regime, steps 88 000 to 160 000) | 15 | `results/strouhal.csv` |
+| Same run with v3 on a Tesla T4 | St 0.1807 / 0.1805, identical amplitude | `results/strouhal.csv` |
 
 The reference value for an unconfined cylinder at Re = 100 is St = 0.164 (Williamson, 1996);
 the 12.5 % blockage of this periodic domain speeds up the flow around the cylinder and raises
@@ -81,7 +82,9 @@ python3 scripts/make_video.py output/cylinder             # -> docs/karman.gif
 ```
 
 Open boundaries are implemented in v0, v1 and v3 with copies only, so v1 and v3 remain bitwise
-identical to v0 on this case too (`tests/test_cylinder_v1.cpp`, `tests/test_cylinder_v3.cu`).
+identical to v0 on this case too (`tests/test_cylinder_v1.cpp`, `tests/test_cylinder_v3.cu`, the
+latter run on the Tesla T4 with `compute-sanitizer` clean): the CPU run (v1) and the GPU run
+(v3) give the same probe statistics to the last printed digit.
 
 ## Performance
 
