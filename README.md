@@ -69,10 +69,16 @@ triggers the vortex shedding deterministically.
 | Periods analysed (established regime, steps 88 000 to 160 000) | 15 | `results/strouhal.csv` |
 | Same run with v3 on a Tesla T4 | St 0.1807 / 0.1805, identical amplitude | `results/strouhal.csv` |
 | Same run with v4, 2 MPI ranks on the Tesla T4 | St 0.1807 / 0.1805, identical amplitude | `results/strouhal.csv` |
+| Independent reference: OpenFOAM (finite volumes, smooth cylinder, 54 380 cells), same domain | St 0.1821 (0.8 % from the LBM); u_y amplitude 0.649 U (LBM: 0.646 U) | `results/strouhal.csv` |
 
 The reference value for an unconfined cylinder at Re = 100 is St = 0.164 (Williamson, 1996);
 the 12.5 % blockage of this periodic domain speeds up the flow around the cylinder and raises
-St, so this is a plausibility check rather than a fine validation. The run is deterministic:
+St. The validation is therefore done on the same domain with an independent method: OpenFOAM
+(laminar incompressible solver, finite volumes, body-fitted mesh of the smooth cylinder;
+`validation/openfoam_cylinder/`, run with `./Allrun`) agrees with the LBM within 0.8 % on the
+Strouhal number and 0.4 % on the probe amplitude, analysed by the same script over the same
+time window (t = 110 to 200 D/U). The remaining difference is consistent with the staircase
+cylinder of the LBM and the different inlet and outlet conditions. The run is deterministic:
 re-running it from the recorded commit reproduces the probe signal bit for bit.
 
 ```bash
