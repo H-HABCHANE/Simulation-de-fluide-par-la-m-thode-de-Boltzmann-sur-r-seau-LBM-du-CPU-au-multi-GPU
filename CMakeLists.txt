@@ -60,6 +60,7 @@ add_subdirectory(src/v0_cpu)
 add_subdirectory(src/v1_omp)
 if(LBM_ENABLE_CUDA)
   add_subdirectory(src/v2_cuda_naive)
+  add_subdirectory(src/v3_cuda_opt)
 
   # GPU memory bandwidth (STREAM Copy equivalent), for the GPU ceiling.
   add_executable(gpu_bandwidth bench/gpu_bandwidth.cu)

@@ -22,3 +22,13 @@ if(TARGET lbm_v2_lib)
   target_link_libraries(test_poiseuille_v2 PRIVATE lbm_v2_lib)
   add_test(NAME poiseuille_v2 COMMAND test_poiseuille_v2)
 endif()
+
+if(TARGET lbm_v3_lib)
+  add_executable(test_v3_vs_v0 test_v3_vs_v0.cu)
+  target_link_libraries(test_v3_vs_v0 PRIVATE lbm_v0_lib lbm_v3_lib)
+  add_test(NAME v3_matches_v0 COMMAND test_v3_vs_v0)
+
+  add_executable(test_poiseuille_v3 test_poiseuille_v3.cu)
+  target_link_libraries(test_poiseuille_v3 PRIVATE lbm_v3_lib)
+  add_test(NAME poiseuille_v3 COMMAND test_poiseuille_v3)
+endif()

@@ -20,7 +20,7 @@ benchmarked on the same metric (MLUPS, million lattice updates per second).
 | v0 | Sequential CPU — correctness reference | done, validated (Poiseuille) |
 | v1 | CPU OpenMP — honest performance baseline: pull scheme, SoA layout, vectorised | done, bitwise identical to v0 |
 | v2 | Naive CUDA — one thread per cell, same layout as v0 | done, bitwise identical to v0 on a Tesla T4 |
-| v3 | Optimized CUDA — SoA layout, fused collide + stream, double buffering | planned |
+| v3 | Optimized CUDA — SoA layout, pull streaming, no modulo; variants kept for measurement | implemented, compiles; GPU validation pending |
 | v4 | Multi-GPU MPI + CUDA — domain decomposition, halo exchange, overlap | planned |
 
 ## Validation
@@ -47,6 +47,8 @@ Cross-version checks (non-uniform case with an obstacle, 500 steps):
 - v2 (CUDA, `--fmad=false`) reproduces v0 **bit for bit** on a Tesla T4, in float and double
   (`tests/test_v2_vs_v0.cu`), and passes the Poiseuille test on the GPU;
 - `compute-sanitizer` (memcheck, initcheck, racecheck, synccheck): 0 errors on v2.
+- v3: every variant (`LBM_V3_VARIANT=soa_push|soa_pull|soa_pull_opt`) is tested bit for bit
+  against v0 and with the Poiseuille test on the GPU (`tests/test_v3_vs_v0.cu`).
 
 ## Build
 

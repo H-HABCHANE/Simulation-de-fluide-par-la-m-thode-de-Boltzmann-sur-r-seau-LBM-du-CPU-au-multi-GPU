@@ -27,8 +27,10 @@ COLUMNS = [
     "real", "cpu", "governor", "compiler", "flags", "build_type",
     "omp_proc_bind", "omp_places", "date", "commit",
     "gpu", "gpu_driver", "gpu_driver_cuda", "cuda_runtime", "cuda_compiled", "ecc", "block",
+    "variant",
 ]
-GPU_FIELDS = ["gpu", "gpu_driver_cuda", "cuda_runtime", "cuda_compiled", "ecc", "block"]
+GPU_FIELDS = ["gpu", "gpu_driver_cuda", "cuda_runtime", "cuda_compiled", "ecc", "block",
+              "variant"]
 
 
 def cpu_model():
@@ -79,11 +81,13 @@ def parse_size(s):
     return int(nx), int(ny)
 
 
-def run_one(exe, nx, ny, steps, warmup, reps, threads, block, env):
+def run_one(exe, nx, ny, steps, warmup, reps, threads, block, variant, env):
     if threads is not None:
         env = dict(env, OMP_NUM_THREADS=str(threads))
     if block is not None:
         env = dict(env, LBM_BLOCK=block)
+    if variant is not None:
+        env = dict(env, LBM_V3_VARIANT=variant)
     cmd = [str(exe), "--bench", "--nx", str(nx), "--ny", str(ny), "--steps", str(steps),
            "--warmup", str(warmup), "--reps", str(reps)]
     out = subprocess.run(cmd, capture_output=True, text=True, env=env, check=True).stdout
@@ -103,6 +107,8 @@ def main():
                     help="OMP_NUM_THREADS values to sweep (omit for sequential versions)")
     ap.add_argument("--blocks", nargs="*", default=None,
                     help="CUDA block sizes to sweep, e.g. 32x8 16x16 (sets LBM_BLOCK)")
+    ap.add_argument("--variants", nargs="*", default=None,
+                    help="v3 kernel variants to sweep (sets LBM_V3_VARIANT)")
     ap.add_argument("--updates", type=float, default=5e7,
                     help="target cell updates per repetition; steps = updates / (nx*ny)")
     ap.add_argument("--reps", type=int, default=5)
@@ -129,9 +135,11 @@ def main():
         nx, ny = parse_size(size)
         steps = max(10, round(args.updates / (nx * ny)))
         warmup = max(1, steps // 5)
-        for threads, block in [(t, b) for t in (args.threads or [None])
-                               for b in (args.blocks or [None])]:
-            recs = run_one(args.exe, nx, ny, steps, warmup, args.reps, threads, block, env)
+        for threads, block, variant in [(t, b, v) for t in (args.threads or [None])
+                                        for b in (args.blocks or [None])
+                                        for v in (args.variants or [None])]:
+            recs = run_one(args.exe, nx, ny, steps, warmup, args.reps, threads, block, variant,
+                           env)
             times = [r["time_s"] for r in recs]
             mlups = [r["mlups"] for r in recs]
             r0 = recs[0]
@@ -150,6 +158,8 @@ def main():
             }
             rows.append(row)
             where = f"block={row['block']}" if row["gpu"] else f"threads={row['threads']}"
+            if row["variant"]:
+                where = f"{row['variant']} {where}"
             print(f"{row['version']} {nx}x{ny} {where}: "
                   f"{row['mlups_mean']} +/- {row['mlups_std']} MLUPS")
 
