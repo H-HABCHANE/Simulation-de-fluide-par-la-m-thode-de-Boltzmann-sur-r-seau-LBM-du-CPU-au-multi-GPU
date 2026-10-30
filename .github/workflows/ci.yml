@@ -32,3 +32,34 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  cuda:
+    name: CUDA build, compile only (${{ matrix.real }})
+    # GitHub runners have no GPU: this job only checks that the CUDA code compiles with the
+    # toolkit used on Colab. Correctness is tested on a GPU (notebooks/run_colab.ipynb).
+    runs-on: ubuntu-24.04
+    container: nvidia/cuda:13.0.2-devel-ubuntu24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - real: float
+            real_double: "OFF"
+          - real: double
+            real_double: "ON"
+    steps:
+      - name: Install build tools
+        run: apt-get update && apt-get install -y --no-install-recommends cmake make g++ git
+
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DLBM_ENABLE_CUDA=ON
+          -DCMAKE_CUDA_ARCHITECTURES=75
+          -DLBM_REAL_DOUBLE=${{ matrix.real_double }}
+
+      - name: Build
+        run: cmake --build build -j

@@ -37,8 +37,12 @@ def main():
 
     with open(args.bandwidth_csv) as f:
         rows = list(csv.DictReader(f))
-    best = max(rows, key=lambda r: float(r["copy_MBps"]))
-    copy_bps = float(best["copy_MBps"]) * 1e6
+    # GPU files also hold a cudaMemcpy device-to-device rate: the best measured copy rate is
+    # the reference (a higher ceiling gives a more conservative "% of ceiling").
+    def rate(r):
+        return max(float(r["copy_MBps"]), float(r.get("memcpy_MBps") or 0.0))
+    best = max(rows, key=rate)
+    copy_bps = rate(best) * 1e6
 
     where = f"{best['threads']} threads" if "threads" in best else best.get("gpu", "GPU")
     print(f"Measured best copy: {copy_bps / 1e9:.2f} GB/s ({where})")

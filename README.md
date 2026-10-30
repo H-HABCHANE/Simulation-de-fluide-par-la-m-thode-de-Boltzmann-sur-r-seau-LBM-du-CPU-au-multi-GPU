@@ -19,7 +19,7 @@ benchmarked on the same metric (MLUPS, million lattice updates per second).
 |---|---|---|
 | v0 | Sequential CPU — correctness reference | done, validated (Poiseuille) |
 | v1 | CPU OpenMP — honest performance baseline: pull scheme, SoA layout, vectorised | done, bitwise identical to v0 |
-| v2 | Naive CUDA — one thread per cell, same layout as v0 | implemented, compiles; GPU validation pending |
+| v2 | Naive CUDA — one thread per cell, same layout as v0 | done, bitwise identical to v0 on a Tesla T4 |
 | v3 | Optimized CUDA — SoA layout, fused collide + stream, double buffering | planned |
 | v4 | Multi-GPU MPI + CUDA — domain decomposition, halo exchange, overlap | planned |
 
@@ -41,9 +41,12 @@ keeps the float resolution on the flow-dependent part of `f`; without it, the fl
 stagnates far from the steady state. Even with it, the float stagnation error (~1e-4) is as
 large as the H = 64 discretisation error, so the convergence order is only checked in double.
 
-Cross-version check: v1 and v1_naive (OpenMP) reproduce v0 **bit for bit** for 1, 2, 3, 4 and 8 threads
-(`tests/test_v1_vs_v0.cpp`, non-uniform case with an obstacle). Later versions must reproduce
-v0 within a justified tolerance.
+Cross-version checks (non-uniform case with an obstacle, 500 steps):
+- v1 and v1_naive (OpenMP) reproduce v0 **bit for bit** for 1, 2, 3, 4 and 8 threads
+  (`tests/test_v1_vs_v0.cpp`);
+- v2 (CUDA, `--fmad=false`) reproduces v0 **bit for bit** on a Tesla T4, in float and double
+  (`tests/test_v2_vs_v0.cu`), and passes the Poiseuille test on the GPU;
+- `compute-sanitizer` (memcheck, initcheck, racecheck, synccheck): 0 errors on v2.
 
 ## Build
 
@@ -102,6 +105,5 @@ docker run --rm -it --gpus all -v "$PWD":/workspace lbm-d2q9
 ## Toolchain
 
 - C++17, CMake ≥ 3.20, OpenMP, Open MPI.
-- CUDA toolkit: **12.4** (Docker image `nvidia/cuda:12.4.1-devel-ubuntu22.04`), chosen to be
-  no newer than the toolkit and driver available on Google Colab. To be confirmed against
-  `nvcc --version` and `nvidia-smi` on Colab before the first GPU measurements.
+- CUDA toolkit: **13.0**, as on Google Colab (Tesla T4: nvcc 13.0.88, driver 580.82.07,
+  ECC on). Docker image and CUDA CI job: `nvidia/cuda:13.0.2-devel-ubuntu24.04`.

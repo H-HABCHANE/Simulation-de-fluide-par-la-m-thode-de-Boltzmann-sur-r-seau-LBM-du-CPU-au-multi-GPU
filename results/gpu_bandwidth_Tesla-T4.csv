@@ -1,0 +1,2 @@
+gpu,copy_MBps,memcpy_MBps,bytes_per_array,reps,ecc,gpu_driver_cuda,cuda_runtime,cuda_compiled,date
+"Tesla T4",208653.7,231944.1,268435456,20,1,13.0,13.0,13.0,2026-10-30T06:52:40
