@@ -49,20 +49,27 @@ def panel(ax, title, bars, ceil, color, ceil_label):
     values = [b[1][0] for b in bars]
     errors = [b[1][1] for b in bars]
     x = range(len(bars))
-    ax.bar(x, values, width=0.6, color=color, yerr=errors, ecolor=TEXT_2, capsize=3, zorder=3,
-           edgecolor=SURFACE, linewidth=2)
+    ax.bar(x, values, width=0.6, color=color, zorder=3, edgecolor=SURFACE, linewidth=2)
+    ax.errorbar(x, values, yerr=errors, fmt="none", ecolor=TEXT, capsize=3, zorder=6)
     ax.axhline(ceil, color=TEXT_2, linestyle=(0, (5, 4)), linewidth=1.5, zorder=4)
-    ax.text(max(len(bars), 3) - 0.45, ceil, f"{ceil_label}: {ceil:,.0f} MLUPS", ha="right", va="bottom",
-            color=TEXT_2, fontsize=9)
-    top = max(ceil, max(values)) * 1.15
+    top = max(ceil, max(values)) * 1.08
+    # Values inside the top of tall bars (white ink), above short ones: no label ever sits
+    # on the ceiling line. The ceiling value is given under the panel title.
     for i, v in enumerate(values):
-        ax.text(i, v + top * 0.015, f"{v:,.0f}\n{100 * v / ceil:.0f} %", ha="center", va="bottom",
-                color=TEXT, fontsize=9)
+        text = f"{v:,.0f}\n{100 * v / ceil:.0f} %"
+        if v > 0.3 * top:
+            ax.text(i, v - top * 0.02, text, ha="center", va="top", color="#ffffff", fontsize=9,
+                    fontweight="bold", zorder=5)
+        else:
+            ax.text(i, v + top * 0.02, text, ha="center", va="bottom", color=TEXT, fontsize=9,
+                    zorder=5)
     ax.set_xlim(-0.6, max(len(bars), 3) - 0.4)  # same bar width whatever the bar count
     ax.set_xticks(list(x))
     ax.set_xticklabels(labels, fontsize=9, color=TEXT)
     ax.set_ylim(0, top)
-    ax.set_title(title, loc="left", fontsize=11, color=TEXT)
+    ax.set_title(f"{title}\n", loc="left", fontsize=11, color=TEXT)
+    ax.text(0, 1.02, f"dashed line: {ceil_label}, {ceil:,.0f} MLUPS", transform=ax.transAxes,
+            ha="left", va="bottom", fontsize=9, color=TEXT_2)
     ax.set_ylabel("MLUPS (higher is better)", color=TEXT_2, fontsize=9)
     ax.grid(axis="y", color=GRID, linewidth=0.8, zorder=0)
     ax.tick_params(colors=TEXT_2, labelsize=9)

@@ -1,0 +1,5 @@
+label,nx,ny,real,bytes_per_cell,ideal_bytes_per_cell,ld_sectors_per_request,st_sectors_per_request,dram_pct_peak,achieved_occupancy_pct,dram_read_B,dram_write_B,kernel
+v2,2048,2048,float,141.8,72,21.12,32.00,41.5,93.1,416620896,178303104,"unnamed>::step_kernel(const float *, float *, const unsigned"
+v3_soa_push,2048,2048,float,101.3,72,2.74,4.67,82.0,93.0,251109504,173909792,"void unnamed>::step_kernel<0, 0>(const float *, float *, con"
+v3_soa_pull,2048,2048,float,96.2,72,3.05,4.00,69.8,92.8,224164928,179203456,"void unnamed>::step_kernel<1, 0>(const float *, float *, con"
+v3_soa_pull_opt,2048,2048,float,94.1,72,3.05,4.00,80.5,90.6,216580576,178090048,"void unnamed>::step_kernel<1, 1>(const float *, float *, con"

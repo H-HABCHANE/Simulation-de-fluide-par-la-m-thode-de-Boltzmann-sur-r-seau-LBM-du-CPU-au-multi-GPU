@@ -54,7 +54,9 @@ def git_commit():
     try:
         out = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO,
                              capture_output=True, text=True, check=True).stdout.strip()
-        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
+        # Measurement files in results/ do not change the measured code.
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no", "--",
+                                ".", ":(exclude)results"],
                                cwd=REPO, capture_output=True, text=True).stdout.strip()
         return out + ("-dirty" if dirty else "")
     except (OSError, subprocess.CalledProcessError):

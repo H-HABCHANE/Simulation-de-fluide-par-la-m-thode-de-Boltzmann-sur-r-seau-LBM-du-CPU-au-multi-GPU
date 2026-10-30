@@ -9,9 +9,9 @@ A 2D Lattice Boltzmann (D2Q9, BGK collision) fluid solver, written in C++17 and 
 developed in successive versions that are all kept, validated against each other and
 benchmarked on the same metric (MLUPS, million lattice updates per second).
 
-> **Status: work in progress.** No performance numbers are published yet. Every number
-> that will appear here comes from a `results/*.csv` file produced by the benchmark script,
-> with the exact hardware, driver, compiler flags, grid size and step count.
+> **Status: work in progress** (v4 multi-GPU, cylinder flow and final write-up to come).
+> Every number below comes from a `results/*.csv` file produced by the benchmark scripts,
+> which also record the hardware, driver, compiler, flags, grid size, step count and commit.
 
 ## Versions
 
@@ -20,7 +20,7 @@ benchmarked on the same metric (MLUPS, million lattice updates per second).
 | v0 | Sequential CPU — correctness reference | done, validated (Poiseuille) |
 | v1 | CPU OpenMP — honest performance baseline: pull scheme, SoA layout, vectorised | done, bitwise identical to v0 |
 | v2 | Naive CUDA — one thread per cell, same layout as v0 | done, bitwise identical to v0 on a Tesla T4 |
-| v3 | Optimized CUDA — SoA layout, pull streaming, no modulo; variants kept for measurement | implemented, compiles; GPU validation pending |
+| v3 | Optimized CUDA — SoA layout, pull streaming, no modulo; variants kept for measurement | done, bitwise identical to v0 on a Tesla T4 |
 | v4 | Multi-GPU MPI + CUDA — domain decomposition, halo exchange, overlap | planned |
 
 ## Validation
@@ -50,6 +50,46 @@ Cross-version checks (non-uniform case with an obstacle, 500 steps):
 - v3: every variant (`LBM_V3_VARIANT=soa_push|soa_pull|soa_pull_opt`) is tested bit for bit
   against v0 and with the Poiseuille test on the GPU (`tests/test_v3_vs_v0.cu`).
 
+## Performance
+
+![MLUPS vs memory-bandwidth ceiling](docs/mlups_vs_ceiling.png)
+
+Float, 2048 x 2048 grid. The ceiling of each machine is its measured memory bandwidth divided
+by the 72 bytes moved per cell update (9 populations read, 9 written).
+
+| Version | Machine | MLUPS | % of ceiling | Source |
+|---|---|---|---|---|
+| v0 sequential | Intel i5-10310U, 1 core | 12.4 | 6 % | `results/v0_i5-10310U.csv` |
+| v1_naive OpenMP | i5-10310U, 4 threads | 30.5 | 15 % | `results/v1_naive_i5-10310U.csv` |
+| v1 OpenMP, pull + SoA + SIMD | i5-10310U, 4 threads | 110.8 | 56 % (of 199) | `results/v1_i5-10310U.csv` |
+| v2 naive CUDA (AoS, push) | Tesla T4 | 1,446 | 45 % | `results/v3_steps_Tesla-T4.csv` |
+| v3 CUDA, SoA + pull, no modulo | Tesla T4 | 3,187 | 99 % (of 3,221) | `results/v3_steps_Tesla-T4.csv` |
+
+- CPU ceiling: STREAM Copy, 14.3 GB/s. GPU ceiling: best of a copy kernel and
+  `cudaMemcpy` device-to-device, 231.9 GB/s (ECC on); the T4 datasheet gives 320 GB/s.
+- v2 and v3 were measured in the same session; GPU results vary by about 5 % between
+  sessions on the shared cloud machine.
+- GPU vs CPU speedups compare two different machines: v3 is 29x faster than v1 on this pair,
+  mostly because the T4 has 16x the memory bandwidth of the laptop.
+
+What changed from v2 to v3, measured with Nsight Compute on one time step
+(`results/ncu_Tesla-T4.csv`, sectors per request: 4 = fully coalesced warp access):
+
+| Kernel | DRAM bytes per cell | Load sectors / request | Store sectors / request |
+|---|---|---|---|
+| v2 (AoS, push) | 141.8 | 21.1 | 32.0 |
+| v3 soa_push | 101.3 | 2.7 | 4.7 |
+| v3 soa_pull | 96.2 | 3.1 | 4.0 |
+| v3 soa_pull_opt | 94.1 | 3.1 | 4.0 |
+
+The structure-of-arrays layout makes the accesses coalesced (v2 stores touch 32 sectors per
+warp request: every 4-byte write lands in a different sector); pull streaming makes the stores
+perfectly aligned; removing the integer modulo cuts the remaining instruction overhead.
+The DRAM traffic stays above the ideal 72 bytes per cell (reasons still to be identified:
+ECC, which is enabled on this GPU, and the reuse of neighbouring rows in the L2 cache are
+candidates), while the useful bandwidth of v3 (3,187 MLUPS x 72 bytes = 229 GB/s) matches the
+`cudaMemcpy` reference.
+
 ## Build
 
 ```bash
@@ -65,6 +105,9 @@ ctest --test-dir build --output-on-failure
 | `LBM_REAL_DOUBLE` | `OFF` | Use `double` instead of `float` |
 | `LBM_NATIVE` | `OFF` | `-march=native -ffp-contract=off` (vectorisation for the build CPU, no FMA) |
 | `LBM_CUDA_FMAD` | `OFF` | Allow FMA contraction in CUDA kernels (speed measurement only; breaks bitwise equality with v0) |
+
+Run-time selection for the CUDA versions: `LBM_BLOCK=32x8` (block size) and, for v3,
+`LBM_V3_VARIANT=soa_push|soa_pull|soa_pull_opt` (default `soa_pull_opt`).
 
 ### Run and plot
 
