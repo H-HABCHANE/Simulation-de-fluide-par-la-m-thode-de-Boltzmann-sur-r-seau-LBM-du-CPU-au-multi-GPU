@@ -52,16 +52,19 @@ void write_npy(const std::string& path, const std::vector<std::uint8_t>& a, int 
 }
 
 std::vector<real> vorticity(const std::vector<real>& ux, const std::vector<real>& uy,
-                            const Mask& solid, int nx, int ny) {
+                            const Mask& solid, int nx, int ny, bool periodic_x) {
   std::vector<real> w(ux.size(), real(0));
   for (int y = 0; y < ny; ++y) {
     const int yp = (y + 1) % ny, ym = (y - 1 + ny) % ny;
     for (int x = 0; x < nx; ++x) {
       const std::size_t c = static_cast<std::size_t>(y) * nx + x;
       if (solid[c]) continue;
-      const int xp = (x + 1) % nx, xm = (x - 1 + nx) % nx;
+      int xp = (x + 1) % nx, xm = (x - 1 + nx) % nx;
+      real h = real(2);
+      if (!periodic_x && x == 0) { xm = 0; h = real(1); }
+      if (!periodic_x && x == nx - 1) { xp = nx - 1; h = real(1); }
       const real duy_dx = (uy[static_cast<std::size_t>(y) * nx + xp] -
-                           uy[static_cast<std::size_t>(y) * nx + xm]) / real(2);
+                           uy[static_cast<std::size_t>(y) * nx + xm]) / h;
       const real dux_dy = (ux[static_cast<std::size_t>(yp) * nx + x] -
                            ux[static_cast<std::size_t>(ym) * nx + x]) / real(2);
       w[c] = duy_dx - dux_dy;

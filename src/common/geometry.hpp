@@ -15,6 +15,10 @@ using Mask = std::vector<std::uint8_t>;
 // so the channel height is H = ny - 2.
 Mask make_channel(int nx, int ny);
 
+// Circular cylinder of diameter D centred at (xc, yc), in cell coordinates: a cell is solid
+// when its centre lies in the disc (staircase approximation, first order in space).
+Mask make_cylinder(int nx, int ny, double xc, double yc, double D);
+
 // Body force giving a Poiseuille profile of peak velocity u_max in a channel of height H
 // (rho = 1): u_max = F H^2 / (8 nu).
 inline real poiseuille_force(int H, real tau, real u_max) {

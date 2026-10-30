@@ -26,6 +26,11 @@ Params parse_args(int argc, char** argv) {
     else if (key == "--out") p.out_dir = val;
     else if (key == "--warmup") p.warmup = std::stoi(val);
     else if (key == "--reps") p.reps = std::stoi(val);
+    else if (key == "--re") p.re = std::stod(val);
+    else if (key == "--diameter") p.diameter = std::stoi(val);
+    else if (key == "--probe-every") p.probe_every = std::stoi(val);
+    else if (key == "--frame-every") p.frame_every = std::stoi(val);
+    else if (key == "--frame-start") p.frame_start = std::stoi(val);
     else throw std::invalid_argument("unknown option " + key);
   }
 
@@ -33,6 +38,8 @@ Params parse_args(int argc, char** argv) {
   if (p.tau <= real(0.5)) throw std::invalid_argument("tau must be > 0.5 (positive viscosity)");
   if (p.steps < 0) throw std::invalid_argument("steps must be >= 0");
   if (p.warmup < 0 || p.reps < 1) throw std::invalid_argument("need warmup >= 0 and reps >= 1");
+  if (p.re <= 0 || p.diameter < 2 || p.probe_every < 1 || p.frame_every < 0)
+    throw std::invalid_argument("invalid cylinder parameters");
   return p;
 }
 

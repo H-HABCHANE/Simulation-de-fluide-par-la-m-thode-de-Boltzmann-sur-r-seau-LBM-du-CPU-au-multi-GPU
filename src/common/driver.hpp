@@ -11,11 +11,19 @@
 //   double timed_run(int steps)  -> elapsed seconds measured by the solver (CUDA events);
 //                                   otherwise the host clock is used around run().
 //   std::string bench_info() const -> extra JSON fields for the benchmark line (GPU, ...).
+//   void set_inflow_outflow(real u_in), void populations_at(x, y, out) -> cylinder case.
+//
+// Cases: --case poiseuille (periodic channel driven by a body force) and --case cylinder
+// (flow past a cylinder: inlet velocity --umax, Reynolds number --re, diameter --diameter;
+// tau is derived from them). The cylinder case writes a velocity probe (probe.csv) and,
+// with --frame-every, vorticity frames (frames/vort_<step>.npy).
 //
 // Normal mode writes the fields to --out. Benchmark mode (--bench) writes nothing and
 // prints one JSON line per timed repetition, prefixed by "BENCH ", for bench/run_bench.py.
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
@@ -47,6 +55,14 @@ template <class S, class = void>
 struct has_timed_run : std::false_type {};
 template <class S>
 struct has_timed_run<S, std::void_t<decltype(std::declval<S&>().timed_run(1))>>
+    : std::true_type {};
+
+template <class S, class = void>
+struct has_open_boundaries : std::false_type {};
+template <class S>
+struct has_open_boundaries<
+    S, std::void_t<decltype(std::declval<S&>().set_inflow_outflow(real(0))),
+                   decltype(std::declval<const S&>().populations_at(0, 0, nullptr))>>
     : std::true_type {};
 
 template <class S, class = void>
@@ -132,14 +148,115 @@ void run_and_write(Solver& solver, const Params& p, const char* version, real fo
   std::printf("fields written to %s\n", p.out_dir.c_str());
 }
 
+// Geometry of the cylinder case: centre at x = 5 D, one cell above mid-height (breaks the
+// symmetry deterministically so that vortex shedding starts); probe 3 D behind the centre.
+struct CylinderSetup {
+  double xc, yc;
+  int probe_x, probe_y;
+  real tau;
+};
+
+inline CylinderSetup cylinder_setup(const Params& p) {
+  CylinderSetup c{};
+  c.xc = 5.0 * p.diameter;
+  c.yc = p.ny / 2 + 1;
+  c.probe_x = static_cast<int>(c.xc + 3.0 * p.diameter);
+  c.probe_y = static_cast<int>(c.yc);
+  const double nu = static_cast<double>(p.u_max) * p.diameter / p.re;
+  c.tau = static_cast<real>(0.5 + 3.0 * nu);
+  return c;
+}
+
+template <class Solver>
+void run_cylinder(Solver& solver, const Params& p, const char* version, const CylinderSetup& cs) {
+  using d2q9::Q;
+  std::filesystem::create_directories(p.out_dir + "/frames");
+  const std::string dir = p.out_dir + "/";
+  std::ofstream probe(dir + "probe.csv");
+  probe << "step,ux,uy,rho\n";
+
+  double seconds = 0.0;
+  int n = 0, frames = 0;
+  while (n < p.steps) {
+    const int chunk = std::min(p.probe_every, p.steps - n);
+    seconds += timed(solver, chunk);
+    n += chunk;
+
+    real f[Q];
+    solver.populations_at(cs.probe_x, cs.probe_y, f);
+    real m0 = 0, mx = 0, my = 0;
+    for (int i = 0; i < Q; ++i) {
+      m0 += f[i];
+      mx += d2q9::cx[i] * f[i];
+      my += d2q9::cy[i] * f[i];
+    }
+    const real rho = real(1) + m0;
+    probe << n << ',' << static_cast<double>(mx / rho) << ',' << static_cast<double>(my / rho)
+          << ',' << static_cast<double>(rho) << '\n';
+    if (!std::isfinite(static_cast<double>(rho)))
+      throw std::runtime_error("the simulation diverged (non-finite density at the probe)");
+
+    if (p.frame_every > 0 && n >= p.frame_start && n % p.frame_every == 0) {
+      std::vector<real> r, ux, uy;
+      solver.macroscopic(r, ux, uy);
+      char name[64];
+      std::snprintf(name, sizeof name, "frames/vort_%07d.npy", n);
+      write_npy(dir + name, vorticity(ux, uy, solver.solid(), p.nx, p.ny, false), p.ny, p.nx);
+      ++frames;
+    }
+  }
+  const double mlups = static_cast<double>(p.nx) * p.ny * p.steps / seconds / 1e6;
+  std::printf("time=%.3f s  MLUPS=%.2f (indicative, without I/O)  frames=%d\n", seconds, mlups,
+              frames);
+
+  std::vector<real> rho, ux, uy;
+  solver.macroscopic(rho, ux, uy);
+  write_npy(dir + "rho.npy", rho, p.ny, p.nx);
+  write_npy(dir + "ux.npy", ux, p.ny, p.nx);
+  write_npy(dir + "uy.npy", uy, p.ny, p.nx);
+  write_npy(dir + "vorticity.npy", vorticity(ux, uy, solver.solid(), p.nx, p.ny, false), p.ny, p.nx);
+  write_npy(dir + "solid.npy", solver.solid(), p.ny, p.nx);
+
+  std::ofstream meta(dir + "meta.json");
+  meta << "{\"version\": \"" << version << "\", \"case\": \"cylinder\", \"nx\": " << p.nx
+       << ", \"ny\": " << p.ny << ", \"tau\": " << static_cast<double>(cs.tau)
+       << ", \"u_in\": " << static_cast<double>(p.u_max) << ", \"re\": " << p.re
+       << ", \"diameter\": " << p.diameter << ", \"xc\": " << cs.xc << ", \"yc\": " << cs.yc
+       << ", \"probe_x\": " << cs.probe_x << ", \"probe_y\": " << cs.probe_y
+       << ", \"probe_every\": " << p.probe_every << ", \"frame_every\": " << p.frame_every
+       << ", \"steps\": " << p.steps << ", \"real\": \"" << real_name << "\"}\n";
+  std::printf("probe, frames and fields written to %s\n", p.out_dir.c_str());
+}
+
 }  // namespace detail
 
 template <class Solver>
 int run_driver(int argc, char** argv, const char* version) {
   try {
     const Params p = parse_args(argc, argv);
+    if (p.case_name == "cylinder") {
+      if constexpr (detail::has_open_boundaries<Solver>::value) {
+        const detail::CylinderSetup cs = detail::cylinder_setup(p);
+        std::printf("case=cylinder nx=%d ny=%d D=%d Re=%g u_in=%g -> tau=%.4f, Ma=%.3f, "
+                    "steps=%d real=%s out=%s\n",
+                    p.nx, p.ny, p.diameter, p.re, static_cast<double>(p.u_max),
+                    static_cast<double>(cs.tau), std::sqrt(3.0) * static_cast<double>(p.u_max),
+                    p.steps, real_name, p.out_dir.c_str());
+        Solver solver(p.nx, p.ny, cs.tau, real(0), real(0),
+                      make_cylinder(p.nx, p.ny, cs.xc, cs.yc, p.diameter));
+        solver.set_inflow_outflow(p.u_max);
+        solver.init_equilibrium(real(1), p.u_max, real(0));
+        detail::run_cylinder(solver, p, version, cs);
+        return 0;
+      } else {
+        std::fprintf(stderr, "%s does not implement the open boundaries of the cylinder case\n",
+                     version);
+        return 1;
+      }
+    }
     if (p.case_name != "poiseuille") {
-      std::fprintf(stderr, "unknown case '%s' (available: poiseuille)\n", p.case_name.c_str());
+      std::fprintf(stderr, "unknown case '%s' (available: poiseuille, cylinder)\n",
+                   p.case_name.c_str());
       return 1;
     }
     if (!p.bench) print_params(p);

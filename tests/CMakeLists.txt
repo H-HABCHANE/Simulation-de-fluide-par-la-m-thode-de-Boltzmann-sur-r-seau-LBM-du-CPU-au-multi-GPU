@@ -10,6 +10,10 @@ if(TARGET lbm_v1_lib)
   add_executable(test_v1_vs_v0 test_v1_vs_v0.cpp)
   target_link_libraries(test_v1_vs_v0 PRIVATE lbm_v0_lib lbm_v1_naive_lib lbm_v1_lib)
   add_test(NAME v1_matches_v0 COMMAND test_v1_vs_v0)
+
+  add_executable(test_cylinder_v1 test_cylinder_v1.cpp)
+  target_link_libraries(test_cylinder_v1 PRIVATE lbm_v0_lib lbm_v1_lib)
+  add_test(NAME cylinder_v1_matches_v0 COMMAND test_cylinder_v1)
 endif()
 
 # GPU tests: built with LBM_ENABLE_CUDA=ON, they need a GPU to run.
@@ -31,4 +35,8 @@ if(TARGET lbm_v3_lib)
   add_executable(test_poiseuille_v3 test_poiseuille_v3.cu)
   target_link_libraries(test_poiseuille_v3 PRIVATE lbm_v3_lib)
   add_test(NAME poiseuille_v3 COMMAND test_poiseuille_v3)
+
+  add_executable(test_cylinder_v3 test_cylinder_v3.cu)
+  target_link_libraries(test_cylinder_v3 PRIVATE lbm_v0_lib lbm_v3_lib)
+  add_test(NAME cylinder_v3_matches_v0 COMMAND test_cylinder_v3)
 endif()

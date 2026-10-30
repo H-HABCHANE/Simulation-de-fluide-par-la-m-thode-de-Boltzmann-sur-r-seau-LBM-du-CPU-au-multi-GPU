@@ -28,6 +28,9 @@ class SolverV1 {
   SolverV1(int nx, int ny, real tau, real force_x, real force_y, Mask solid);
 
   void init_equilibrium(real rho0, real ux0, real uy0);
+  // Opens the domain in x: inlet (u_in, 0) at x = 0, outflow at x = nx - 1 (boundary.hpp).
+  // Call before init_equilibrium().
+  void set_inflow_outflow(real u_in);
   void step();
   void run(int steps);
 
@@ -36,6 +39,7 @@ class SolverV1 {
 
   // Post-streaming populations in v0's layout ((y * nx + x) * 9 + i), for comparisons.
   std::vector<real> populations() const;
+  void populations_at(int x, int y, real* out) const;  // post-streaming, one cell
   int threads() const;
 
   int nx() const { return nx_; }
@@ -50,6 +54,8 @@ class SolverV1 {
   int nx_, ny_;
   real tau_, fx_, fy_;
   Mask solid_;
+  bool open_x_ = false;
+  real eq_in_[d2q9::Q] = {};
   // Raw arrays: pages are first touched in parallel with the same row distribution as step().
   std::unique_ptr<real[]> g_, g_new_;
 };

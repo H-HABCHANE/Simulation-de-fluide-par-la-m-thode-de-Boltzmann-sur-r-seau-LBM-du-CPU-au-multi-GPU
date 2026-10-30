@@ -15,8 +15,9 @@ void write_npy(const std::string& path, const std::vector<double>& a, int ny, in
 void write_npy(const std::string& path, const std::vector<std::uint8_t>& a, int ny, int nx);
 
 // Vorticity dUy/dx - dUx/dy with second-order central differences (periodic wrap).
-// Set to zero on solid cells.
+// periodic_x = false (open domain): first-order one-sided x differences on the columns
+// x = 0 and x = nx - 1. Set to zero on solid cells.
 std::vector<real> vorticity(const std::vector<real>& ux, const std::vector<real>& uy,
-                            const Mask& solid, int nx, int ny);
+                            const Mask& solid, int nx, int ny, bool periodic_x = true);
 
 }  // namespace lbm

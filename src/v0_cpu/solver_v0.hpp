@@ -20,6 +20,10 @@ class SolverV0 {
   // Sets every fluid cell to the equilibrium of (rho0, ux0, uy0).
   void init_equilibrium(real rho0, real ux0, real uy0);
 
+  // Opens the domain in x: inlet at x = 0 with velocity (u_in, 0), outflow at x = nx - 1
+  // (see boundary.hpp). By default the domain is periodic in both directions.
+  void set_inflow_outflow(real u_in);
+
   // One collide + stream step.
   void step();
   void run(int steps);
@@ -33,6 +37,8 @@ class SolverV0 {
 
   // Raw (shifted) populations, for cross-version comparisons.
   const std::vector<real>& populations() const { return g_; }
+  // Post-streaming populations of one cell (velocity probe).
+  void populations_at(int x, int y, real* out) const;
   int threads() const { return 1; }
 
   int nx() const { return nx_; }
@@ -46,6 +52,8 @@ class SolverV0 {
   int nx_, ny_;
   real tau_, fx_, fy_;
   Mask solid_;
+  bool open_x_ = false;
+  real eq_in_[d2q9::Q] = {};
   std::vector<real> g_, g_new_;
 };
 

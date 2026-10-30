@@ -3,6 +3,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include "boundary.hpp"
+
 namespace lbm {
 
 using namespace d2q9;
@@ -48,6 +50,16 @@ void SolverV0::init_equilibrium(real rho0, real ux0, real uy0) {
   g_new_ = g_;
 }
 
+void SolverV0::set_inflow_outflow(real u_in) {
+  open_x_ = true;
+  equilibrium_state(real(1), u_in, real(0), eq_in_);
+}
+
+void SolverV0::populations_at(int x, int y, real* out) const {
+  const std::size_t c = cell(x, y);
+  for (int i = 0; i < Q; ++i) out[i] = g_[c * Q + i];
+}
+
 void SolverV0::step() {
   const real omega = real(1) / tau_;
   const real force_prefactor = real(1) - real(0.5) * omega;
@@ -71,7 +83,14 @@ void SolverV0::step() {
                                                          uy, fx_, fy_);
 
         // Streaming (push) with periodic wrap; bounce back if the target is solid.
-        const int xn = (x + cx[i] + nx_) % nx_;
+        // An open domain discards the populations leaving it through x = 0 or x = nx - 1.
+        int xn;
+        if (open_x_) {
+          xn = x + cx[i];
+          if (xn < 0 || xn >= nx_) continue;
+        } else {
+          xn = (x + cx[i] + nx_) % nx_;
+        }
         const int yn = (y + cy[i] + ny_) % ny_;
         const std::size_t cn = cell(xn, yn);
         if (solid_[cn])
@@ -81,6 +100,7 @@ void SolverV0::step() {
       }
     }
   }
+  if (open_x_) apply_open_boundaries_push(g_new_.data(), solid_, nx_, ny_, eq_in_);
   std::swap(g_, g_new_);
 }
 

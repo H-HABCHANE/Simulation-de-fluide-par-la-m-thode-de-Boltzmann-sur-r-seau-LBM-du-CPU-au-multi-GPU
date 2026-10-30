@@ -34,6 +34,9 @@ class SolverV3 {
   SolverV3& operator=(const SolverV3&) = delete;
 
   void init_equilibrium(real rho0, real ux0, real uy0);
+  // Opens the domain in x: inlet (u_in, 0) at x = 0, outflow at x = nx - 1 (boundary.hpp).
+  // Call before init_equilibrium().
+  void set_inflow_outflow(real u_in);
   void step();
   void run(int steps);
   double timed_run(int steps);  // elapsed GPU time in seconds (CUDA events)
@@ -43,6 +46,7 @@ class SolverV3 {
   void macroscopic(std::vector<real>& rho, std::vector<real>& ux, std::vector<real>& uy) const;
   double total_mass() const;
   std::vector<real> populations() const;
+  void populations_at(int x, int y, real* out) const;  // post-streaming, one cell
 
   int threads() const { return 0; }
   std::string bench_info() const;
@@ -60,6 +64,8 @@ class SolverV3 {
   real tau_, fx_, fy_;
   Mask solid_;
   Variant variant_ = Variant::SoaPullOpt;
+  bool open_x_ = false;
+  real eq_in_[d2q9::Q] = {};
   int block_x_ = 32, block_y_ = 8;
   real* g_d_ = nullptr;
   real* g_new_d_ = nullptr;

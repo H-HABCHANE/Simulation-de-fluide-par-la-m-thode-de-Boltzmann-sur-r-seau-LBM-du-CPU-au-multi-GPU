@@ -16,6 +16,13 @@ struct Params {
   int steps = 20000;
   std::string out_dir = "output";
 
+  // Cylinder case: inlet velocity = u_max, tau derived from the Reynolds number.
+  double re = 100.0;
+  int diameter = 40;
+  int probe_every = 50;   // steps between two velocity probe samples
+  int frame_every = 0;    // steps between two vorticity frames (0: none)
+  int frame_start = 0;    // first step at which frames are written
+
   // Benchmark mode: no file output; `warmup` untimed steps, then `reps` timed runs of `steps`.
   bool bench = false;
   int warmup = 100;
@@ -23,7 +30,8 @@ struct Params {
 };
 
 // Parses "--key value" pairs (--case, --nx, --ny, --tau, --umax, --steps, --out,
-// --warmup, --reps) and the --bench flag.
+// --warmup, --reps, --re, --diameter, --probe-every, --frame-every, --frame-start)
+// and the --bench flag.
 // Throws std::invalid_argument on unknown keys or invalid values.
 Params parse_args(int argc, char** argv);
 

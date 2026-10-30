@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "boundary.hpp"
 #include "cuda_check.hpp"
 
 namespace lbm {
@@ -16,6 +17,7 @@ __constant__ int c_cx[d2q9::Q];
 __constant__ int c_cy[d2q9::Q];
 __constant__ int c_opp[d2q9::Q];
 __constant__ real c_w[d2q9::Q];
+__constant__ real c_eq_in[d2q9::Q];  // inlet equilibrium (open domain), see boundary.hpp
 
 // Periodic neighbour (x + dx, y + dy) with |dx|, |dy| <= 1.
 // kNoModulo: one comparison per coordinate instead of an integer division.
@@ -38,7 +40,9 @@ __device__ __forceinline__ std::size_t neighbour(int x, int y, int dx, int dy, i
 // any block shape up to 1024 threads reaches full occupancy. The unrolled loops keep the 9
 // populations in registers: 64 registers without spill in float; in double the pull variants
 // spill 24 bytes per thread to the stack (cuobjdump -res-usage).
-template <bool kPull, bool kNoModulo>
+// kOpen: domain open in x (inlet at x = 0, outflow at x = nx - 1, boundary.hpp); otherwise
+// periodic in both directions. Separate instantiations keep the periodic kernel unchanged.
+template <bool kPull, bool kNoModulo, bool kOpen>
 __global__ void __launch_bounds__(1024)
     step_kernel(const real* __restrict__ g, real* __restrict__ g_new,
                 const std::uint8_t* __restrict__ solid, int nx, int ny, real omega,
@@ -59,8 +63,17 @@ __global__ void __launch_bounds__(1024)
     if constexpr (kPull) {
       // Population i arrives from c - c_i, or bounces back from a solid neighbour as the
       // outgoing population opp(i) of c itself.
-      const std::size_t s = neighbour<kNoModulo>(x, y, -c_cx[i], -c_cy[i], nx, ny);
-      gin[i] = solid[s] ? g[c_opp[i] * N + c] : g[i * N + s];
+      if (kOpen && x == 0 && c_cx[i] == 1) {
+        gin[i] = c_eq_in[i];  // inlet
+      } else if (kOpen && x == nx - 1 && c_cx[i] == -1) {
+        // Outlet: copy of what the cell x = nx - 2 receives in direction i.
+        const std::size_t c2 = c - 1;
+        const std::size_t s = neighbour<kNoModulo>(nx - 2, y, 1, -c_cy[i], nx, ny);
+        gin[i] = solid[s] ? g[c_opp[i] * N + c2] : g[i * N + s];
+      } else {
+        const std::size_t s = neighbour<kNoModulo>(x, y, -c_cx[i], -c_cy[i], nx, ny);
+        gin[i] = solid[s] ? g[c_opp[i] * N + c] : g[i * N + s];
+      }
     } else {
       gin[i] = g[i * N + c];
     }
@@ -89,12 +102,35 @@ __global__ void __launch_bounds__(1024)
     if constexpr (kPull) {
       g_new[i * N + c] = g_post;  // own cell: coalesced write
     } else {
+      if (kOpen && (x + c_cx[i] < 0 || x + c_cx[i] >= nx)) continue;  // leaves the domain
       const std::size_t cn = neighbour<kNoModulo>(x, y, c_cx[i], c_cy[i], nx, ny);
       if (solid[cn])
         g_new[c_opp[i] * N + c] = g_post;
       else
         g_new[i * N + cn] = g_post;
     }
+  }
+}
+
+// Push scheme, open domain: inflow / outflow rules on the post-streaming buffer
+// (one thread per row; same rules as apply_open_boundaries_push in boundary.hpp).
+__global__ void open_boundaries_push_kernel(real* __restrict__ g,
+                                            const std::uint8_t* __restrict__ solid, int nx,
+                                            int ny) {
+  const int y = blockIdx.x * blockDim.x + threadIdx.x;
+  if (y >= ny) return;
+  const std::size_t N = static_cast<std::size_t>(nx) * ny;
+  const std::size_t row = static_cast<std::size_t>(y) * nx;
+  if (!solid[row]) {
+    g[1 * N + row] = c_eq_in[1];
+    g[5 * N + row] = c_eq_in[5];
+    g[8 * N + row] = c_eq_in[8];
+  }
+  const std::size_t out = row + nx - 1, prev = row + nx - 2;
+  if (!solid[out]) {
+    g[3 * N + out] = g[3 * N + prev];
+    g[6 * N + out] = g[6 * N + prev];
+    g[7 * N + out] = g[7 * N + prev];
   }
 }
 
@@ -172,10 +208,13 @@ void SolverV3::init_equilibrium(real rho0, real ux0, real uy0) {
       for (int i = 0; i < Q; ++i) {
         if (pull()) {
           // Preimage by streaming: slot (c, i) is sent to (c + c_i, i), or to (c, opp(i)) if
-          // c + c_i is solid; the equilibrium is the same in every fluid cell.
+          // c + c_i is solid; the equilibrium is the same in every fluid cell. In an open
+          // domain, a slot whose population leaves the domain is never read (gets eq[i]).
+          const bool leaves = open_x_ && (x + cx[i] < 0 || x + cx[i] >= nx_);
           const int xn = (x + cx[i] + nx_) % nx_;
           const int yn = (y + cy[i] + ny_) % ny_;
-          g[i * N + c] = solid_[static_cast<std::size_t>(yn) * nx_ + xn] ? eq[opp[i]] : eq[i];
+          g[i * N + c] =
+              !leaves && solid_[static_cast<std::size_t>(yn) * nx_ + xn] ? eq[opp[i]] : eq[i];
         } else {
           g[i * N + c] = eq[i];
         }
@@ -186,26 +225,55 @@ void SolverV3::init_equilibrium(real rho0, real ux0, real uy0) {
   CUDA_CHECK(cudaMemcpy(g_new_d_, g.data(), bytes, cudaMemcpyHostToDevice));
 }
 
+void SolverV3::set_inflow_outflow(real u_in) {
+  open_x_ = true;
+  equilibrium_state(real(1), u_in, real(0), eq_in_);
+  CUDA_CHECK(cudaMemcpyToSymbol(c_eq_in, eq_in_, sizeof(eq_in_)));
+}
+
+void SolverV3::populations_at(int x, int y, real* out) const {
+  // Reads only the device values needed for this cell (velocity probe).
+  using d2q9::Q;
+  const std::size_t N = cells();
+  auto get = [&](int i, std::size_t cell) {
+    real v;
+    CUDA_CHECK(cudaMemcpy(&v, g_d_ + i * N + cell, sizeof(real), cudaMemcpyDeviceToHost));
+    return v;
+  };
+  if (pull()) {
+    gather_pull(get, solid_, nx_, ny_, x, y, open_x_, eq_in_, out);
+  } else {
+    const std::size_t c = static_cast<std::size_t>(y) * nx_ + x;
+    for (int i = 0; i < Q; ++i) out[i] = get(i, c);
+  }
+}
+
 void SolverV3::step() {
   const real omega = real(1) / tau_;
   const real force_prefactor = real(1) - real(0.5) * omega;
   const dim3 block(block_x_, block_y_);
   const dim3 grid((nx_ + block.x - 1) / block.x, (ny_ + block.y - 1) / block.y);
+#define LBM_V3_LAUNCH(PULL, NOMOD)                                                        \
+  do {                                                                                    \
+    if (open_x_)                                                                          \
+      step_kernel<PULL, NOMOD, true><<<grid, block>>>(g_d_, g_new_d_, solid_d_, nx_, ny_, \
+                                                      omega, force_prefactor, fx_, fy_);  \
+    else                                                                                  \
+      step_kernel<PULL, NOMOD, false><<<grid, block>>>(g_d_, g_new_d_, solid_d_, nx_,     \
+                                                       ny_, omega, force_prefactor, fx_,  \
+                                                       fy_);                              \
+  } while (0)
   switch (variant_) {
-    case Variant::SoaPush:
-      step_kernel<false, false><<<grid, block>>>(g_d_, g_new_d_, solid_d_, nx_, ny_, omega,
-                                                 force_prefactor, fx_, fy_);
-      break;
-    case Variant::SoaPull:
-      step_kernel<true, false><<<grid, block>>>(g_d_, g_new_d_, solid_d_, nx_, ny_, omega,
-                                                force_prefactor, fx_, fy_);
-      break;
-    case Variant::SoaPullOpt:
-      step_kernel<true, true><<<grid, block>>>(g_d_, g_new_d_, solid_d_, nx_, ny_, omega,
-                                               force_prefactor, fx_, fy_);
-      break;
+    case Variant::SoaPush: LBM_V3_LAUNCH(false, false); break;
+    case Variant::SoaPull: LBM_V3_LAUNCH(true, false); break;
+    case Variant::SoaPullOpt: LBM_V3_LAUNCH(true, true); break;
   }
+#undef LBM_V3_LAUNCH
   CUDA_CHECK_LAUNCH();
+  if (open_x_ && !pull()) {
+    open_boundaries_push_kernel<<<(ny_ + 127) / 128, 128>>>(g_new_d_, solid_d_, nx_, ny_);
+    CUDA_CHECK_LAUNCH();
+  }
   std::swap(g_d_, g_new_d_);
 }
 
@@ -241,15 +309,11 @@ std::vector<real> SolverV3::populations() const {
     for (int x = 0; x < nx_; ++x) {
       const std::size_t c = static_cast<std::size_t>(y) * nx_ + x;
       if (solid_[c]) continue;
-      for (int i = 0; i < Q; ++i) {
-        if (pull()) {
-          const int xs = (x - cx[i] + nx_) % nx_;
-          const int ys = (y - cy[i] + ny_) % ny_;
-          const std::size_t s = static_cast<std::size_t>(ys) * nx_ + xs;
-          out[c * Q + i] = solid_[s] ? g[opp[i] * N + c] : g[i * N + s];
-        } else {
-          out[c * Q + i] = g[i * N + c];
-        }
+      if (pull()) {
+        gather_pull([&](int i, std::size_t cell) { return g[i * N + cell]; }, solid_, nx_, ny_,
+                    x, y, open_x_, eq_in_, &out[c * Q]);
+      } else {
+        for (int i = 0; i < Q; ++i) out[c * Q + i] = g[i * N + c];
       }
     }
   return out;
