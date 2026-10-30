@@ -1,5 +1,10 @@
 # LBM D2Q9 fluid solver — from CPU to multi-GPU
 
+[![CI](https://github.com/H-HABCHANE/Simulation-de-fluide-par-la-m-thode-de-Boltzmann-sur-r-seau-LBM-du-CPU-au-multi-GPU/actions/workflows/ci.yml/badge.svg)](https://github.com/H-HABCHANE/Simulation-de-fluide-par-la-m-thode-de-Boltzmann-sur-r-seau-LBM-du-CPU-au-multi-GPU/actions/workflows/ci.yml)
+![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus)
+![OpenMP](https://img.shields.io/badge/OpenMP-parallel-informational)
+![CMake](https://img.shields.io/badge/build-CMake-064F8C?logo=cmake)
+
 A 2D Lattice Boltzmann (D2Q9, BGK collision) fluid solver, written in C++17 and CUDA,
 developed in successive versions that are all kept, validated against each other and
 benchmarked on the same metric (MLUPS, million lattice updates per second).
