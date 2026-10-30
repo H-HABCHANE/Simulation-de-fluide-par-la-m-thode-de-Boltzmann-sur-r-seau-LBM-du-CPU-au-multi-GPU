@@ -1,0 +1,2 @@
+run,version,real,nx,ny,diameter,u_in,re,tau,steps,window_start,st_fft,st_zero_crossing,periods,uy_amplitude,commit,date
+v1_i5-10310U,v1,float,1000,320,40,0.05,100,0.56000,160000,88000,0.1807,0.1805,15,0.03232,9859769,2026-10-30T09:15:22

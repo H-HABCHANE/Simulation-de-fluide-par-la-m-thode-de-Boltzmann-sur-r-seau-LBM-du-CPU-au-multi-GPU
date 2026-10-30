@@ -9,7 +9,12 @@ A 2D Lattice Boltzmann (D2Q9, BGK collision) fluid solver, written in C++17 and 
 developed in successive versions that are all kept, validated against each other and
 benchmarked on the same metric (MLUPS, million lattice updates per second).
 
-> **Status: work in progress** (v4 multi-GPU, cylinder flow and final write-up to come).
+![Von Karman vortex street behind a cylinder, Re = 100](docs/karman.gif)
+
+*Vorticity behind a cylinder at Re = 100 (blue: clockwise, red: counter-clockwise),
+computed with this solver; 4 shedding periods.*
+
+> **Status: work in progress** (v4 multi-GPU and final write-up to come).
 > Every number below comes from a `results/*.csv` file produced by the benchmark scripts,
 > which also record the hardware, driver, compiler, flags, grid size, step count and commit.
 
@@ -49,6 +54,34 @@ Cross-version checks (non-uniform case with an obstacle, 500 steps):
 - `compute-sanitizer` (memcheck, initcheck, racecheck, synccheck): 0 errors on v2.
 - v3: every variant (`LBM_V3_VARIANT=soa_push|soa_pull|soa_pull_opt`) is tested bit for bit
   against v0 and with the Poiseuille test on the GPU (`tests/test_v3_vs_v0.cu`).
+
+## Flow past a cylinder (Re = 100)
+
+1000 x 320 grid, cylinder diameter D = 40 cells, inlet velocity 0.05 (Mach 0.087),
+tau = 0.56, 160 000 steps. Inlet: equilibrium at the inlet velocity; outlet: zero gradient;
+periodic in y (blockage D/H = 12.5 %). The cylinder is placed one cell above mid-height, which
+triggers the vortex shedding deterministically.
+
+| Quantity | Value | Source |
+|---|---|---|
+| Strouhal number St = f D / U (FFT of the probe signal) | 0.1807 | `results/strouhal.csv` |
+| Same, from the mean period between zero crossings | 0.1805 | `results/strouhal.csv` |
+| Periods analysed (established regime, steps 88 000 to 160 000) | 15 | `results/strouhal.csv` |
+
+The reference value for an unconfined cylinder at Re = 100 is St = 0.164 (Williamson, 1996);
+the 12.5 % blockage of this periodic domain speeds up the flow around the cylinder and raises
+St, so this is a plausibility check rather than a fine validation. The run is deterministic:
+re-running it from the recorded commit reproduces the probe signal bit for bit.
+
+```bash
+./build/src/v1_omp/lbm_v1 --case cylinder --nx 1000 --ny 320 --diameter 40 --re 100 --umax 0.05 \
+    --steps 160000 --frame-every 450 --frame-start 142000 --out output/cylinder
+python3 scripts/strouhal.py output/cylinder --from 0.55   # -> results/strouhal.csv
+python3 scripts/make_video.py output/cylinder             # -> docs/karman.gif
+```
+
+Open boundaries are implemented in v0, v1 and v3 with copies only, so v1 and v3 remain bitwise
+identical to v0 on this case too (`tests/test_cylinder_v1.cpp`, `tests/test_cylinder_v3.cu`).
 
 ## Performance
 
