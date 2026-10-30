@@ -1,0 +1,4 @@
+threads,copy_MBps,scale_MBps,add_MBps,triad_MBps,array_size,ntimes,cpu,governor,date
+1,14319.9,9825.1,11135.2,11106.5,40000000,20,"Intel(R) Core(TM) i5-10310U CPU @ 1.70GHz",powersave,2026-10-30T07:21:17+01:00
+4,12210.3,9273.1,9318.7,9643.1,40000000,20,"Intel(R) Core(TM) i5-10310U CPU @ 1.70GHz",powersave,2026-10-30T07:21:24+01:00
+8,12451.1,9106.0,9260.4,9298.0,40000000,20,"Intel(R) Core(TM) i5-10310U CPU @ 1.70GHz",powersave,2026-10-30T07:21:31+01:00
